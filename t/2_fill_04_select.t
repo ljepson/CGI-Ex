@@ -1,15 +1,15 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+2_fill_04_select.t - Test CGI::Ex::Fill's ability to fill select fields
+
+=cut
+
 use strict;
+use Test::More tests => 5;
 
-$^W = 1;
-
-print "1..5\n";
-
-use CGI::Ex;
-use CGI;
-
-print "ok 1\n";
+use_ok('CGI::Ex::Fill');
 
 my $hidden_form_in = qq{<select multiple name="foo1">
 	<option value="0">bar1</option>
@@ -31,23 +31,20 @@ my $hidden_form_in = qq{<select multiple name="foo1">
 	<option selected value="bar2">bar2</option>
 	<option value="bar3">bar3</option>
 </select>};
-my $q = new CGI( { foo1 => '0',
-           foo2 => ['bar1', 'bar2',],
-	   foo3 => '' }
-	);
+my $q = {
+    foo1 => '0',
+    foo2 => ['bar1', 'bar2',],
+    foo3 => '',
+};
 
-my $fif = new CGI::Ex;
-my $output = $fif->fill(scalarref => \$hidden_form_in,
-                       fobject => $q);
+my $output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                      $q);
 
 my $is_selected = join(" ",map { m/selected/ ? "yes" : "no" } grep /option/, split ("\n",$output));
 
-if ($is_selected eq "yes no no yes yes no no no no no yes no"){
-       print "ok 2\n";
-} else {
-       print "Got unexpected is_seleced for select menus:\n$is_selected\n$output\n";
-       print "not ok 2\n";
-}
+ok($is_selected eq "yes no no yes yes no no no no no yes no",
+   "Selected should match ($is_selected)");
+
 
 $hidden_form_in = qq{<select multiple name="foo1">
 	<option>bar1</option>
@@ -70,45 +67,32 @@ $hidden_form_in = qq{<select multiple name="foo1">
 	<option>bar3  </option>
 </select>};
 
-$q = new CGI( { foo1 => 'bar1',
-           foo2 => ['bar1', 'bar2',],
-	   foo3 => '' }
-	);
+$q = {
+    foo1 => 'bar1',
+    foo2 => ['bar1', 'bar2',],
+    foo3 => '',
+};
 
-$fif = new CGI::Ex;
-$output = $fif->fill(scalarref => \$hidden_form_in,
-                       fobject => $q);
+$output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                   $q);
 
 $is_selected = join(" ",map { m/selected/ ? "yes" : "no" } grep /option/, split ("\n",$output));
 
-if ($is_selected eq "yes no no yes yes no no no no no yes no"){
-       print "ok 3\n";
-} else {
-       print "Got unexpected is_seleced for select menus:\n$is_selected\n$output\n";
-       print "not ok 3\n";
-}
+ok($is_selected eq "yes no no yes yes no no no no no yes no",
+   "Selected should match ($is_selected)");
 
 # test empty option tag
 
 $hidden_form_in = qq{<select name="x"><option></select>};
-$fif = new CGI::Ex;
-$output = $fif->fill(scalarref => \$hidden_form_in,
-                       fobject => $q);
-if ($output eq qq{<select name="x"><option></select>}){
-       print "ok 4\n";
-} else {
-       print "Got unexpected output for empty option:\n$output\n";
-       print "not ok 4\n";
-}
+
+$output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                   $q);
+ok($output eq qq{<select name="x"><option></select>},
+   "Should match ($output)");
 
 $hidden_form_in = qq{<select name="foo1"><option><option value="bar1"></select>};
-$fif = new CGI::Ex;
-$output = $fif->fill(scalarref => \$hidden_form_in,
-                       fobject => $q);
-if ($output =~ m!^<select name="foo1"><option><option( selected(="selected")?| value="bar1"){2}></select>$!){
-       print "ok 5\n";
-} else {
-       print "Got unexpected output for empty option:\n$output\n";
-       print "not ok 5\n";
-}
+$output = CGI::Ex::Fill::form_fill($hidden_form_in,
+                                   $q);
+ok($output =~ m!^<select name="foo1"><option><option( selected(="selected")?| value="bar1"){2}></select>$!,
+   "Should match ($output)");
 

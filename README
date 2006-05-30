@@ -1,103 +1,63 @@
 NAME
-    CGI::Ex - CGI utility suite (form getter/filler/validator/app builder)
+    CGI::Ex - CGI utility suite - makes powerful application writing fun and
+    easy
 
-SYNOPSIS
-      ### CGI Module Extensions
+CGI::Ex SYNOPSIS
+        ### You probably don't want to use CGI::Ex directly
+        ### You probably should use CGI::Ex::App instead.
 
-      my $cgix = CGI::Ex->new;
-      my $hashref = $cgix->get_form; # uses CGI by default
+        my $cgix = CGI::Ex->new;
 
-      ### send the Content-type header - whether or not we are mod_perl
-      $cgix->print_content_type;
+        $cgix->print_content_type;
 
-      my $val_hash = $cgix->conf_read($pathtovalidation);
+        my $hash = $cgix->form;
 
-      my $err_obj = $cgix->validate($hashref, $val_hash);
-      if ($err_obj) {
-        my $errors  = $err_obj->as_hash;
-        my $input   = "Some content";
-        my $content = "";
-        SomeTemplateObject->process($input, $errors, $content);
-        $cgix->fill({text => \$content, form => $hashref});
-        print $content;
-        exit;
-      }
+        if ($hash->{'bounce'}) {
 
-      print "Success\n";
+            $cgix->set_cookie({
+                name  => ...,
+                value => ...,
+            });
 
-      ### Filling functionality
+            $cgix->location_bounce($new_url_location);
+            exit;
+        }
 
-      $cgix->fill({text => \$text, form    => \%hash});
-      $cgix->fill({text => \$text, fdat    => \%hash});
-      $cgix->fill({text => \$text, fobject => $cgiobject});
-      $cgix->fill({text => \$text, form    => [\%hash1, $cgiobject]});
-      $cgix->fill({text => \$text); # uses $self->object as the form
-      $cgix->fill({text          => \$text,
-                     form          => \%hash,
-                     target        => 'formname',
-                     fill_password => 0,
-                     ignore_fields => ['one','two']});
-      $cgix->fill(\$text); # uses $self->object as the form
-      $cgix->fill(\$text, \%hash, 'formname', 0, ['one','two']);
-      my $copy = $cgix->fill({scalarref => \$text,    fdat => \%hash});
-      my $copy = $cgix->fill({arrayref  => \@lines,   fdat => \%hash});
-      my $copy = $cgix->fill({file      => $filename, fdat => \%hash});
-
-      ### Validation functionality
-
-      my $err_obj = $cgix->validate($form, $val_hash);
-      my $err_obj = $cgix->validate($form, $path_to_validation);
-      my $err_obj = $cgix->validate($form, $yaml_string);
-
-      ### get errors separated by key name
-      ### useful for inline errors
-      my $hash = $err_obj->as_hash;
-      my %hash = $err_obj->as_hash;
-
-      ### get aggregate list of errors
-      ### useful for central error description
-      my $array = $err_obj->as_array;
-      my @array = $err_obj->as_array;
-
-      ### get a string
-      ### useful for central error description
-      my $string = $err_obj->as_string;
-      my $string = "$err_obj";
-
-      $cgix->{raise_error} = 1;
-      $cgix->validate($form, $val_hash);
-        # SAME AS #
-      my $err_obj = $cgix->validate($form, $val_hash);
-      die $err_obj if $err_obj;
-
-      ### Settings functionality
-
-      ### read file via yaml
-      my $ref = $cgix->conf_read('/full/path/to/conf.yaml');
-
-      ### merge all found settings.pl files together
-      @CGI::Ex::Conf::DEFAULT_PATHS = qw(/tmp /my/data/dir /home/foo);
-      @CGI::Ex::Conf::DIRECTIVE     = 'MERGE';
-      @CGI::Ex::Conf::DEFAULT_EXT   = 'pl';
-      my $ref = $cgix->conf_read('settings');
+        if (scalar keys %$form) {
+             my $val_hash = $cgix->conf_read($pathtovalidation);
+             my $err_obj = $cgix->validate($hash, $val_hash);
+             if ($err_obj) {
+                 my $errors  = $err_obj->as_hash;
+                 my $input   = "Some content";
+                 my $content = "";
+                 $cgix->swap_template(\$input, $errors, $content);
+                 $cgix->fill({text => \$content, form => $hashref});
+                 print $content;
+                 exit;
+             } else {
+                 print "Success";
+             }
+        } else {
+             print "Main page";
+        }
 
 DESCRIPTION
     CGI::Ex provides a suite of utilities to make writing CGI scripts more
     enjoyable. Although they can all be used separately, the main
     functionality of each of the modules is best represented in the
     CGI::Ex::App module. CGI::Ex::App takes CGI application building to the
-    next step. CGI::Ex::App is not a framework (which normally includes
-    prebuilt html) instead CGI::Ex::App is an extended application flow that
-    normally dramatically reduces CGI build time. See CGI::Ex::App.
-
-    CGI::Ex is another form filler / validator / conf reader / template
-    interface. Its goal is to take the wide scope of validators and other
-    useful CGI application modules out there and merge them into one utility
-    that has all of the necessary features of them all, as well as several
-    extended methods that I have found useful in working on the web.
+    next step. CGI::Ex::App is not quite a framework (which normally
+    includes pre-built html) instead CGI::Ex::App is an extended application
+    flow that dramatically reduces CGI build time in most cases. It does so
+    using as little magic as possible. See CGI::Ex::App.
 
     The main functionality is provided by several other modules that may be
     used separately, or together through the CGI::Ex interface.
+
+    "CGI::Ex::Template"
+        A Template::Toolkit compatible processing engine. With a few
+        limitations, CGI::Ex::Template can be a drop in replacement for
+        Template::Toolkit.
 
     "CGI::Ex::Fill"
         A regular expression based form filler inner (accessed through
@@ -121,7 +81,11 @@ DESCRIPTION
         and xml and open architecture for definition of others. See
         CGI::Ex::Conf for more information.
 
-METHODS
+    "CGI::Ex::Auth"
+        A highly configurable web based authentication system. See
+        CGI::Ex::Auth for more information.
+
+CGI::Ex METHODS
     "->fill"
         fill is used for filling hash or cgi object values into an existing
         html document (it doesn't deal at all with how you got the
@@ -136,7 +100,7 @@ METHODS
         "text"
             Text should be a reference to a scalar string containing the
             html to be modified (actually it could be any reference or
-            object reference that can be modfied as a string). It will be
+            object reference that can be modified as a string). It will be
             modified in place. Another named argument scalarref is available
             if you would like to copy rather than modify.
 
@@ -145,11 +109,11 @@ METHODS
             array of multiple hashrefs, cgi objects, and coderefs. Hashes
             should be key value pairs. CGI objects should be able to call
             the method param (This can be overrided). Coderefs should expect
-            expect the field name as an argument and should return a value.
-            Values returned by form may be undef, scalar, arrayref, or
-            coderef (coderef values should expect an argument of field name
-            and should return a value). The code ref options are available
-            to delay or add options to the bringing in of form informatin -
+            the field name as an argument and should return a value. Values
+            returned by form may be undef, scalar, arrayref, or coderef
+            (coderef values should expect an argument of field name and
+            should return a value). The code ref options are available to
+            delay or add options to the bringing in of form information -
             without having to tie the hash. Coderefs are not available in
             HTML::FillInForm. Also HTML::FillInForm only allows CGI objects
             if an arrayref is used.
@@ -170,7 +134,7 @@ METHODS
             of names, or a hashref with the names as keys. The hashref
             option is not available in CGI::Ex::Fill.
 
-        Other named arguments are available for compatiblity with
+        Other named arguments are available for compatibility with
         HTML::FillInForm. They may only be used as named arguments.
 
         "scalarref"
@@ -218,15 +182,33 @@ METHODS
 
     "->get_form"
         Very similar to CGI->new->Vars except that arrays are returned as
-        arrays. Not sure why CGI::Val didn't do this anyway (well - yes -
-        legacy Perl 4 - but at some point things need to be updated).
+        arrays. Not sure why CGI didn't do this anyway (well - yes - legacy
+        Perl 4 - but at some point things need to be updated).
+
+            my $hash = $cgix->get_form;
+            my $hash = $cgix->get_form(CGI->new);
+            my $hash = get_form();
+            my $hash = get_form(CGI->new);
 
     "->set_form"
         Allow for setting a custom form hash. Useful for testing, or other
         purposes.
 
+            $cgix->set_form(\%new_form);
+
     "->get_cookies"
         Returns a hash of all cookies.
+
+            my $hash = $cgix->get_cookies;
+            my $hash = $cgix->get_cookies(CGI->new);
+            my $hash = get_cookies();
+            my $hash = get_cookies(CGI->new);
+
+    "->set_cookies"
+        Allow for setting a custom cookies hash. Useful for testing, or
+        other purposes.
+
+            $cgix->set_cookies(\%new_cookies);
 
     "->make_form"
         Takes a hash and returns a query_string. A second optional argument
@@ -325,7 +307,7 @@ METHODS
           #$str eq "<html>(bar) <br>
           #        (wow) <br>
           #        (wee) </html>";
-  
+
         For further examples, please see the code contained in
         t/samples/cgi_ex_* of this distribution.
 
@@ -333,38 +315,26 @@ METHODS
         templates that were being swapped by CGI::Ex::swap_template should
         be compatible with Template::Toolkit.
 
-EXISTING MODULES
-    The following is a list of existing validator and formfiller modules at
-    the time of this writing (I'm sure this probably isn't exaustive).
-
-    "Email::Valid" - Validator
-    "SSN::Validate" - Validator
-    "Embperl::Form::Validate" - Validator
-    "Data::CGIForm" - Validator
-    "HTML::FillInForm" - Form filler-iner
-    "CGI" - CGI Getter. Form filler-iner
-
-TODO
-        Add an integrated template toolkit interface.
-
-        Add an integrated debug module.
-
 MODULES
-        See also CGI::Ex::Fill.
+    See also CGI::Ex::App.
 
-        See also CGI::Ex::Validate.
+    See also CGI::Ex::Auth.
 
-        See also CGI::Ex::Conf.
+    See also CGI::Ex::Conf.
 
-        See also CGI::Ex::Die.
+    See also CGI::Ex::Die.
 
-        See also CGI::Ex::App.
+    See also CGI::Ex::Dump.
 
-        See also CGI::Ex::Dump.
+    See also CGI::Ex::Fill.
+
+    See also CGI::Ex::Template.
+
+    See also CGI::Ex::Validate.
 
 AUTHOR
-        Paul Seamons
+    Paul Seamons
 
 LICENSE
-        This module may be distributed under the same terms as Perl itself.
+    This module may be distributed under the same terms as Perl itself.
 

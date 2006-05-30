@@ -1,11 +1,14 @@
 # -*- Mode: Perl; -*-
 
-use Test;
+=head1 NAME
 
-BEGIN {plan tests => 2};
+6_die_00_base.t - Very basic testing of the Die module.
 
-use CGI::Ex::Die;
-ok(1);
+=cut
+
+use Test::More tests => 2;
+
+use_ok('CGI::Ex::Die');
 
 ok(eval {
   import CGI::Ex::Die register => 1;

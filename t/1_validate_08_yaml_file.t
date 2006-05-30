@@ -1,146 +1,139 @@
 # -*- Mode: Perl; -*-
 
+=head1 NAME
+
+1_validate_08_yaml_file.t - Check for CGI::Ex::Validate's ability to load YAML conf files.
+
+=cut
+
 use strict;
+use Test::More tests => 22;
 
-$^W = 1;
+SKIP: {
 
-### determine number of tests
-seek(DATA,0,0);
-my $prog  = join "", <DATA>;
-my @tests = ($prog =~ /&print_ok\(/g);
-my $tests = @tests;
-print "1..$tests\n";
+skip("Missing YAML.pm", 22) if ! eval { require 'YAML' };
 
-require CGI::Ex::Validate;
+use_ok('CGI::Ex::Validate');
 
-my ($N, $v, $e, $ok) = (0);
+my ($v, $e);
 
-sub validate {
-  return scalar &CGI::Ex::Validate::validate(@_);
-}
-sub print_ok {
-  my $ok = shift;
-  $N ++;
-  warn "Test failed at line ".(caller)[2]."\n" if ! $ok;
-  print "" . ($ok ? "" : "not ") . "ok $N\n";
-}
-&print_ok(1);
+sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
 ### where are my samples
 my $dir = __FILE__;
 $dir =~ tr|\\|/|; # should probably use File::Spec
-$dir =~ s|[^/]+$|samples| || die "Couldn't determine dir";
+$dir =~ s|[^/]+$|../samples| || die "Couldn't determine dir";
 $dir =~ s|^t/|./t/|; # to satisfy conf
 
 ### single group
 $v = "$dir/yaml1.val";
 
-$e = &validate({}, $v);
-&print_ok($e);
-$e = &validate({user => 1}, $v);
-&print_ok(! $e);
-$e = &validate({user => 1, bar => 1}, $v);
-&print_ok($e);
-$e = &validate({user => 1, bar => 1, foo => 1}, $v);
-&print_ok(! $e);
+$e = validate({}, $v);
+ok($e, 'nothing passed');
+$e = validate({user => 1}, $v);
+ok(! $e, 'user passed');
+$e = validate({user => 1, bar => 1}, $v);
+ok($e, 'user and bar passed');
+$e = validate({user => 1, bar => 1, foo => 1}, $v);
+ok(! $e, 'user and bar and foo passed');
 
 
 ### single group - default extension
 $v = "$dir/yaml1";
 
-$e = &validate({}, $v);
-&print_ok($e);
-$e = &validate({user => 1}, $v);
-&print_ok(! $e);
-$e = &validate({user => 1, bar => 1}, $v);
-&print_ok($e);
-$e = &validate({user => 1, bar => 1, foo => 1}, $v);
-&print_ok(! $e);
+$e = validate({}, $v);
+ok($e);
+$e = validate({user => 1}, $v);
+ok(! $e);
+$e = validate({user => 1, bar => 1}, $v);
+ok($e);
+$e = validate({user => 1, bar => 1, foo => 1}, $v);
+ok(! $e);
 
 
 ### three groups, some with validate_if's - using arrayref
 $v = "$dir/yaml2.val";
 
-$e = &validate({}, $v);
-&print_ok($e);
+$e = validate({}, $v);
+ok($e);
 
-$e = &validate({
+$e = validate({
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   haw => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
 
 ### three groups, some with validate_if's - using documents
 $v = "$dir/yaml3.val";
 
-$e = &validate({}, $v);
-&print_ok($e);
+$e = validate({}, $v);
+ok($e);
 
-$e = &validate({
+$e = validate({
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok($e);
+ok($e);
 
-$e = &validate({
+$e = validate({
   foo => 1,
   bar => 1,
   hem => 1,
   haw => 1,
   raspberry => 'tart',
 }, $v);
-&print_ok(! $e);
+ok(! $e);
 
-__DATA__
+} # end of SKIP

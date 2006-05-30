@@ -10,5 +10,4 @@ blib
 \.gz$
 .cvsignore
 tmon\.out
-t/samples/template
-wrap
+WrapEx.pm
