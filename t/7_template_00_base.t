@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => 460 - ($is_tt ? 54 : 0);
+use Test::More tests => 514 - ($is_tt ? 103 : 0);
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -182,6 +182,10 @@ process_ok("[% __foo %]2" => '2', {__foo => 1});
 process_ok("[% _foo = 1 %][% _foo %]2" => '2');
 process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
+process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo') if ! $is_tt;
+process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
+process_ok('[% [0..10].${ 2.3 } %]' => '2') if ! $is_tt;
+
 ###----------------------------------------------------------------###
 ### variable SETting
 
@@ -242,12 +246,17 @@ process_ok("[% SET foo = ['z'..'a'] %][% foo.6 %]" => '');
 process_ok("[% SET foo = ['a'..'z'].reverse %][% foo.6 %]" => 't')      if ! $is_tt;
 
 process_ok("[% foo = 1 %][% foo %]" => '1');
-process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 ; bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo.bar = 2 %][% foo.bar %]" => '2');
 
 process_ok('[% a = "a" %][% (b = a) %][% a %][% b %]' => 'aaa');
 process_ok('[% a = "a" %][% (c = (b = a)) %][% a %][% b %][% c %]' => 'aaaa');
+
+process_ok("[% a = qw{Foo Bar Baz} ; a.2 %]" => 'Baz') if ! $is_tt;
+
+process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
+process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
+process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### Reserved words
@@ -296,6 +305,8 @@ process_ok("[% 123.length %]" => 3) if ! $is_tt;
 process_ok("[% 123.2.length %]" => 5) if ! $is_tt;
 process_ok("[% -123.2.length %]" => -5) if ! $is_tt; # the - doesn't bind as tight as the dot methods
 process_ok("[% (-123.2).length %]" => 6) if ! $is_tt;
+process_ok("[% a = 23; a.0 %]" => 23) if ! $is_tt; # '0' is a scalar_op
+process_ok('[% 1.rand %]' => qr/^0\.\d+$/) if ! $is_tt;
 
 process_ok("[% n.repeat %]" => '1',     {n => 1}) if ! $is_tt; # tt2 virtual method defaults to 0
 process_ok("[% n.repeat(0) %]" => '',   {n => 1});
@@ -334,8 +345,36 @@ process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => 
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
-### this does work - but requires that Template::Filters is installed
-#process_ok("[% ' ' | uri %]" => '%20');
+process_ok('[% ["a".."z"].random %]' => qr/^[a-z]/) if ! $is_tt;
+process_ok('[% ["a".."z"].${ 26.rand } %]' => qr/^[a-z]/) if ! $is_tt;
+
+process_ok("[% ' ' | uri %]" => '%20');
+
+process_ok('[% "one".as %]' => "one") if ! $is_tt;
+process_ok('[% 2.as("%02d") %]' => "02") if ! $is_tt;
+
+process_ok('[% [1..3].as %]' => "1 2 3") if ! $is_tt;
+process_ok('[% [1..3].as("%02d") %]' => '01 02 03') if ! $is_tt;
+process_ok('[% [1..3].as("%s", ", ") %]' => '1, 2, 3') if ! $is_tt;
+
+process_ok('[% {a => "B", c => "D"}.as %]' => "a\tB\nc\tD") if ! $is_tt;
+process_ok('[% {a => "B", c => "D"}.as("%s:%s") %]' => "a:B\nc:D") if ! $is_tt;
+process_ok('[% {a => "B", c => "D"}.as("%s:%s", "; ") %]' => "a:B; c:D") if ! $is_tt;
+
+###----------------------------------------------------------------###
+### virtual objects
+
+process_ok('[% a = "foobar" %][% Text.length(a) %]' => 6) if ! $is_tt;
+process_ok('[% a = [1 .. 10] %][% List.size(a) %]' => 10) if ! $is_tt;
+process_ok('[% a = {a=>"A", b=>"B"} ; Hash.size(a) %]' => 2) if ! $is_tt;
+
+process_ok('[% a = Text.new("This is a string") %][% a.length %]' => 16) if ! $is_tt;
+process_ok('[% a = List.new("one", "two", "three") %][% a.size %]' => 3) if ! $is_tt;
+process_ok('[% a = Hash.new("one", "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one = "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+process_ok('[% a = Hash.new(one => "ONE") %][% a.one %]' => 'ONE') if ! $is_tt;
+
+process_ok('[% {a => 1, b => 2} | Hash.keys | List.join(", ") %]' => 'a, b');
 
 ###----------------------------------------------------------------###
 ### chomping
@@ -356,6 +395,14 @@ process_ok("[% foo -%] \n" => '');
 process_ok("[% foo -%]\n " => ' ');
 process_ok("[% foo -%]\n\n\n" => "\n\n");
 process_ok("[% foo -%] \n " => ' ');
+
+
+###----------------------------------------------------------------###
+### concat
+
+process_ok('[% a = "foo"; a _ "bar" %]' => 'foobar');
+process_ok('[% a = "foo"; a ~ "bar" %]' => 'foobar') if ! $is_tt;
+process_ok('[% a = "foo"; a ~= "bar"; a %]' => 'foobar') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### math operations
@@ -382,6 +429,29 @@ process_ok("[% 1 + 2 ** 3 %]" => 9) if ! $is_tt;
 process_ok("[% 2 * 2 ** 3 %]" => 16) if ! $is_tt;
 process_ok("[% SET foo = 1 %][% foo + 2 %]" => 3);
 process_ok("[% SET foo = 1 %][% (foo + 2) %]" => 3);
+
+process_ok("[% a = 1; (a += 2) %]"  => 3)  if ! $is_tt;
+process_ok("[% a = 1; (a -= 2) %]"  => -1) if ! $is_tt;
+process_ok("[% a = 4; (a /= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 1; (a *= 2) %]"  => 2)  if ! $is_tt;
+process_ok("[% a = 3; (a **= 2) %]" => 9)  if ! $is_tt;
+process_ok("[% a = 1; (a %= 2) %]"  => 1)  if ! $is_tt;
+
+process_ok('[% a += 1 %]-[% a %]-[% a += 1 %]-[% a %]' => '-1--2') if ! $is_tt;
+process_ok('[% (a += 1) %]-[% (a += 1) %]' => '1-2') if ! $is_tt;
+
+process_ok('[% a = 2; a -= 3; a %]' => '-1') if ! $is_tt;
+process_ok('[% a = 2; a *= 3; a %]' => '6') if ! $is_tt;
+process_ok('[% a = 2; a /= .5; a %]' => '4') if ! $is_tt;
+process_ok('[% a = 8; a %= 3; a %]' => '2') if ! $is_tt;
+process_ok('[% a = 2; a **= 3; a %]' => '8') if ! $is_tt;
+
+process_ok('[% a = 1 %][% ++a %][% a %]' => '22') if ! $is_tt;
+process_ok('[% a = 1 %][% a++ %][% a %]' => '12') if ! $is_tt;
+process_ok('[% a = 1 %][% --a %][% a %]' => '00') if ! $is_tt;
+process_ok('[% a = 1 %][% a-- %][% a %]' => '10') if ! $is_tt;
+process_ok('[% a++ FOR [1..3] %]' => '012') if ! $is_tt;
+process_ok('[% --a FOR [1..3] %]' => '-1-2-3') if ! $is_tt;
 
 ###----------------------------------------------------------------###
 ### boolean operations
@@ -486,6 +556,8 @@ process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% NEXT %][% END %][% f %
 process_ok("[% FOREACH f = [1..3] %][% IF loop.first %][% LAST %][% END %][% f %][% END %]" => '');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% NEXT %][% END %][% END %]" => '123');
 process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.first %][% LAST %][% END %][% END %]" => '1');
+
+process_ok('[% a = ["Red", "Blue"] ; FOR [0..3] ; a.${ loop.index % a.size } ; END %]' => 'RedBlueRedBlue') if ! $is_tt;
 
 ### TT is not consistent in what is localized - well it is documented
 ### if you set a variable in the FOREACH tag, then nothing in the loop gets localized
@@ -737,3 +809,9 @@ process_ok("[% PERL %] print \$stash->set('a.b.c', 7) [% END %][% a.b.c %]" => '
 
 process_ok("[% BLOCK foo %][% PROCESS bar %][% END %][% BLOCK bar %][% PROCESS foo %][% END %][% PROCESS foo %]" => '') if ! $is_tt;
 
+###----------------------------------------------------------------###
+### META
+
+process_ok("[% template.name %]" => 'input text');
+process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
+process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');

@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.01';
+    $VERSION = '2.02';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
 }
@@ -757,15 +757,17 @@ sub print {
 sub print_out {
     my ($self, $step, $out) = @_;
 
-    $self->cgix->print_content_type();
+    $self->cgix->print_content_type;
     print $out;
 }
 
 sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
-    require CGI::Ex::Template;
     my $args = $self->run_hook('template_args', $step);
+    $args->{'INCLUDE_PATH'} ||= sub { $self->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
+
+    require CGI::Ex::Template;
     my $t = CGI::Ex::Template->new($args);
 
     my $out = '';
@@ -774,13 +776,7 @@ sub swap_template {
     return $out;
 }
 
-sub template_args {
-    my $self = shift;
-    my $step = shift;
-    return {
-        INCLUDE_PATH => sub { $self->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" },
-    };
-}
+sub template_args { {} }
 
 sub fill_template {
     my ($self, $step, $outref, $fill) = @_;
@@ -936,9 +932,9 @@ sub hash_validation {
       if (ref($file) && ! UNIVERSAL::isa($file, 'SCALAR')) {
           $hash = $file;
 
-      ### read the file - if it fails - errors should be in the webserver error logs
+      ### read the file - if it is not found, errors will be in the webserver logs (all else dies)
       } elsif ($file) {
-          $hash = eval { $self->vob->get_validation($file) } || {};
+          $hash = $self->vob->get_validation($file) || {};
 
       } else {
           $hash = {};

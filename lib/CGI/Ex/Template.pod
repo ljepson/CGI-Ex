@@ -70,7 +70,7 @@ In general the following statements are true:
     If you use Template::Stash::XS with a cached in memory template,
     then CET is about as fast.
 
-    Using TT with a compiled-in-memory template is only 33
+    Using TT with a compiled-in-memory template is only 33%
     faster than CET with a new object compiling each time.
 
 It is pretty hard to beat the speed of XS stash with compiled in
@@ -102,8 +102,8 @@ commonly used public methods are listed later in this document.
 
 =item C<process>
 
-This is the main method call for staring processing.  Any errors that results in the
-template being stopped processing will be stored and available via the ->error method.
+This is the main method call for starting processing.  Any errors that result in the
+template processing being stopped will be stored and available via the ->error method.
 
 Process takes three arguments.
 
@@ -175,128 +175,252 @@ to Template::Stash::define_vmethod.
 
 =head1 TODO
 
-    Add WRAPPER config item
+    Add WRAPPER configuration item (the WRAPPER directive is supported).
 
     Add ERROR config item
 
 =head1 HOW IS CGI::Ex::Template DIFFERENT
 
-CET uses the same template syntax and configuration items
-as TT2, but the internals of CET were written from scratch.  In
-addition to this, the following is a list of some of the ways that
-configuration and syntax of CET different from that of TT.
+CET uses the same base template syntax and configuration items as TT2,
+but the internals of CET were written from scratch.  Additionally much
+of the planned TT3 syntax is supported.  The following is a list of
+some of the ways that the configuration and syntax of CET are
+different from that of TT2.  Note: items that are planned to work in
+TT3 are marked with (TT3).
 
 =over 4
 
-Numerical hash keys work [% a = {1 => 2} %]
+=item Numerical hash keys work
 
-Quoted hash key interpolation is fine [% a = {"$foo" => 1} %]
+    [% a = {1 => 2} %]
 
-Multiple ranges in same constructor [% a = [1..10, 21..30] %]
+=item Quoted hash key interpolation is fine
 
-Constructor types can call virtual methods
+    [% a = {"$foo" => 1} %]
 
-   [% a = [1..10].reverse %]
+=item Multiple ranges in same constructor
 
-   [% "$foo".length %]
+    [% a = [1..10, 21..30] %]
 
-   [% 123.length %]   # = 3
+=item Constructor types can call virtual methods. (TT3)
 
-   [% 123.4.length %]  # = 5
+    [% a = [1..10].reverse %]
 
-   [% -123.4.length %] # = -5 ("." binds more tightly than "-")
+    [% "$foo".length %]
 
-   [% (a ~ b).length %]
+    [% 123.length %]   # = 3
 
-   [% "hi".repeat(3) %]
+    [% 123.4.length %]  # = 5
 
-   [% {a => b}.size %]
+    [% -123.4.length %] # = -5 ("." binds more tightly than "-")
 
-Reserved names are less reserved
+    [% (a ~ b).length %]
 
-   [% GET GET %] # gets the variable named "GET"
+    [% "hi".repeat(3) %]
 
-   [% GET $GET %] # gets the variable who's name is stored in "GET"
+    [% {a => b}.size %]
 
-Filters and SCALAR_OPS are interchangeable.
+=item The "${" and "}" variable interpolators can contain expressions,
+not just variables.
 
-   [% a | length %]
+    [% [0..10].${ 1 + 2 } %] # = 4
 
-   [% b . lower %]
+    [% {ab => 'AB'}.${ 'a' ~ 'b' } %] # = AB
 
-Pipe "|" can be used anywhere dot "." can be and means to call
-the virtual method.
+    [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
+      # = RedBlueRedBlue
 
-   [% a = {size => "foo"} %][% a.size %] # = foo
+=item Arrays can be accessed with non-integer numbers.
 
-   [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
+    [% [0..10].${ 2.3 } %] # = 3
 
-Pipe "|" and "." can be mixed.
+=item Reserved names are less reserved. (TT3)
 
-   [% "aa" | repeat(2) . length %] # = 4
+    [% GET GET %] # gets the variable named "GET"
 
-Whitespace is less meaningful.
+    [% GET $GET %] # gets the variable who's name is stored in "GET"
 
-   [% 2-1 %] # = 1 (fails in TT)
+=item Filters and SCALAR_OPS are interchangeable. (TT3)
 
-Added pow operator.
+    [% a | length %]
 
-   [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
+    [% b . lower %]
 
-FOREACH variables can be nested
+=item Pipe "|" can be used anywhere dot "." can be and means to call
+the virtual method. (TT3)
 
-   [% FOREACH f.b = [1..10] ; f.b ; END %]
+    [% a = {size => "foo"} %][% a.size %] # = foo
 
-   Note that nested variables are subject to scoping issues.
-   f.b will not be reset to its value before the FOREACH.
+    [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
-Post operative directives can be nested.
+=item Pipe "|" and "." can be mixed. (TT3)
 
-   [% one IF two IF three %]
+    [% "aa" | repeat(2) . length %] # = 4
 
-   same as
+=item Added Virtual Object Namespaces. (TT3)
 
-   [% IF three %][% IF two %][% one %][% END %][% END %]
+The Text, List, and Hash types give direct access
+to virtual methods.
+
+    [% a = "foobar" %][% Text.length(a) %] # = 6
+
+    [% a = [1 .. 10] %][% List.size(a) %] # = 10
+
+    [% a = {a=>"A", b=>"B"} ; Hash.size(a) %] = 2
+
+    [% foo = {a => 1, b => 2}
+       | Hash.keys
+       | List.join(", ") %] # = a, b
+
+=item Added "as" scalar, list, and hash virtual methods.
+
+    [% list.as("%s", ", ") %]
+
+    [% hash.as("%s => %s", "\n") %]
+
+=item Whitespace is less meaningful. (TT3)
+
+    [% 2-1 %] # = 1 (fails in TT2)
+
+=item Added pow operator.
+
+    [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
+
+=item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
+
+    [% a = 2;  a *= 3  ; a %] # = 6
+    [% a = 2; (a *= 3) ; a %] # = 66
+
+=item Added pre and post increment and decrement (++ --). (TT3)
+
+    [% ++a ; ++a %] # = 12
+    [% a-- ; a-- %] # = 0-1
+
+=item Added qw// contructor. (TT3)
+
+    [% a = qw(a b c); a.1 %] # = b
+
+    [% qw/a b c/.2 %] # = c
+
+=item Allow for scientific notation. (TT3)
+
+    [% a = 1.2e-20 %]
+
+    [% 123.as('%.3e') %] # = 1.230e+02
+
+=item Allow for hexidecimal input. (TT3)
+
+    [% a = 0xff0000 %][% a %] # = 16711680
+
+    [% a = 0xff2 / 0xd; a.as('%x') %] # = 13a
+
+=item FOREACH variables can be nested.
+
+    [% FOREACH f.b = [1..10] ; f.b ; END %]
+
+Note that nested variables are subject to scoping issues.
+f.b will not be reset to its value before the FOREACH.
+
+=item Post operative directives can be nested. (TT3)
+
+Andy Wardley calls this side-by-side effect notation.
+
+    [% one IF two IF three %]
+
+    same as
+
+    [% IF three %][% IF two %][% one %][% END %][% END %]
 
 
-   [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
+    [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
 
-CATCH blocks can be empty.
+=item Semi-colons on directives in the same tag are optional. (TT3)
 
-CET does not generate Perl code.  It generates an "opcode" tree.
+    [% SET a = 1
+       GET a
+     %]
 
-CET uses storable for its compiled templates.  If EVAL_PERL is off,
-CET will not eval_string on ANY piece of information.
+    [% FOREACH i = [1 .. 10]
+         i
+       END %]
 
-There is no context.  CET provides a context object that mimics the
-Template::Context interface for use by some TT filters, eval perl
-blocks, and plugins.
+Note: a semi-colon is still required in front of any block directive
+that can be used as a post-operative directive.
 
-There is no stash.  CET only supports the variables passed in
-VARIABLES, PRE_DEFINE, and those passed to the process method.  CET
-provides a stash object that mimics the Template::Stash interface for
-use by some TT filters, eval perl blocks, and plugins.
+    [% 1 IF 0
+       2 %]   # prints 2
 
-There is no provider.  CET uses the load_parsed_tree method to get and
-cache templates.
+    [% 1; IF 0
+       2
+       END %] # prints 1
 
-There is no grammar.  CET has its own built in grammar system.
+=item CATCH blocks can be empty.
 
-There is no VIEW directive.
+TT2 requires them to contain something.
 
-There are no references.  (There was in initial beta tests, but it was decided
-to remove the little used feature).
+=item Added a DUMP directive.
 
-The DEBUG directive only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
+Used for Data::Dumpering the passed variable or expression.
 
-When debug dirs is on, directives on different lines separated by colons show the line they
+   [% DUMP a.a %]
+
+=item CET does not generate Perl code.
+
+It generates an "opcode" tree.
+
+=item CET uses storable for its compiled templates.
+
+If EVAL_PERL is off, CET will not eval_string on ANY piece of information.
+
+=item There is no context.
+
+CET provides a context object that mimics the Template::Context
+interface for use by some TT filters, eval perl blocks, and plugins.
+
+=item There is no stash.
+
+Well there is but it isn't an object.
+
+CET only supports the variables passed in VARIABLES, PRE_DEFINE, and
+those passed to the process method.  CET provides a stash object that
+mimics the Template::Stash interface for use by some TT filters, eval
+perl blocks, and plugins.
+
+=item There is no provider.
+
+CET uses the load_parsed_tree method to get and cache templates.
+
+=item There is no grammar.
+
+CET has its own built in recursive grammar system.
+
+=item There is no VIEW directive.
+
+
+=item There are no references.
+
+There was in initial beta tests, but it was decided to remove the little used feature.
+
+It makes it the same as
+
+    [% obj.method("foo") %]
+
+This is removed in CET.
+
+=item The DEBUG directive is more limited.
+
+It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
+
+=item When debug dirs is on, directives on different lines separated by colons show the line they
 are on rather than a general line range.
 
-There is no ANYCASE configuration item.  There was in initial beta tests, but it
-was dropped in favor of consistent parsing syntax.
+=item There is no ANYCASE configuration item.
 
-There is no V1DOLLAR configuration item.  This is a TT version 1 compatibility item and
-is not available in CET.
+There was in initial beta tests, but it was dropped in favor of consistent parsing syntax.
+
+=item There is no V1DOLLAR configuration item.
+
+This is a TT version 1 compatibility item and is not available in CET.
 
 =back
 
@@ -333,7 +457,7 @@ a hashref as the second argument to the process method, or by setting the "VARIA
     ### pass the variables during object creation (will be available to every process call)
     my $cet = CGI::Ex::Template->new(VARIABLES => \%vars);
 
-=head1 GETTING VARIABLES
+=head2 GETTING VARIABLES
 
 Once you have variables defined, they can be used directly in the template by using their name
 in the stash.  Or by using the GET directive.
@@ -351,13 +475,13 @@ Would print when processed:
 To access members of a hashref or an arrayref, you can chain together the names using a ".".
 
     [% some_data.a %]
-    [% my_list.0] [% my_list.1 %]
+    [% my_list.0] [% my_list.1 %] [% my_list.-1 %]
     [% some_data.c.2 %]
 
 Would print:
 
     A
-    20 21
+    20 21 50
     4
 
 If the value of a variable is a code reference, it will be called.  You can add a set of parenthesis
@@ -373,7 +497,7 @@ Would print:
     You passed me ().
     You passed me ().
     You passed me (bar).
-    You passed me (1, 2, 3).
+    You passed me (1.0, 2, 3).
 
 If the value of a variable is an object, methods can be called using the "." operator.
 
@@ -387,9 +511,11 @@ Would print something like:
 
     $VAR1 = [ \[ '+', '1', '2' ], 0 ];
 
-Each type of data has virtual methods associated with them.  Virtual methods
-allow for access to common functions.  For the full list of built in virtual
-methods, please see the section titled VIRTUAL METHODS
+Each type of data (string, array and hash) have virtual methods
+associated with them.  Virtual methods allow for access to functions
+that are commonly used on those types of data.  For the full list of
+built in virtual methods, please see the section titled VIRTUAL
+METHODS
 
     [% foo.length %]
     [% my_list.size %]
@@ -403,7 +529,7 @@ Would print:
 
 It is also possible to "interpolate" variable names using a "$".  This allows for storing
 the name of a variable inside another variable.  If a variable name is a little
-more complex, it can be embedded inside of "${" and "}".
+more complex it can be embedded inside of "${" and "}".
 
     [% $vname %]
     [% ${vname} %]
@@ -418,6 +544,19 @@ Would print:
     1.0
     3234
     3234
+
+In CET it is also possible to embed any expression (non-directive) in "${" and "}"
+and it is possible to use non-integers for array access.  (This is not available in TT2)
+
+    [% ['a'..'z'].${ 2.3 } %]
+    [% {ab => 'AB'}.${ 'a' ~ 'b' } %]
+    [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
+
+Would print:
+
+    c
+    AB
+    RedBlueRedBlue
 
 =head2 SETTING VARIABLES.
 
@@ -445,7 +584,7 @@ Would print:
     2
     val1 val2
 
-It is possible to set multiple values at the same time.
+It is possible to set multiple values in the same SET directive.
 
     [% SET a = 'A'
            b = 'B'
@@ -474,10 +613,11 @@ Would print
 
 =head1 LITERALS AND CONSTRUCTORS
 
-The following are the types of literals allowed in CET.  They can be used as arguments
-to functions, in place of variables in directives, and in place of variables in expressions.
-
-In CET it is also possible to call virtual methods on literal values.
+The following are the types of literals (numbers and strings) and
+constructors (hash and array constructs) allowed in CET.  They can be
+used as arguments to functions, in place of variables in directives,
+and in place of variables in expressions.  In CET it is also possible
+to call virtual methods on literal values.
 
 =over 4
 
@@ -488,57 +628,80 @@ In CET it is also possible to call virtual methods on literal values.
     [% pi = 3.14159 %]   Sets the value of the variable.
     [% 3.13159.length %] Prints 7 (the string length of the number)
 
+Scientific notation is supported.
 
-=item Single quoted string.
+    [% 314159e-5 + 0 %]      Prints 3.14159.
+
+    [% .0000001.as('%.1e') %]  Prints 1.0e-07
+
+Hexidecimal input is also supported.
+
+    [% 0xff + 0 %]    Prints 255
+
+    [% 48875.as('%x') %]  Prints beeb
+
+=item Single quoted strings.
 
 Returns the string.  No variable interpolation happens.
 
     [% 'foobar' %]          Prints "foobar".
-    [% '$foo\n' %]          Prints "$foo\\n".  # the \\n is a literal "\" and a "\n"
+    [% '$foo\n' %]          Prints "$foo\\n".  # the \\n is a literal "\" and an "n"
     [% 'That\'s nice' %]    Prints "That's nice".
     [% str = 'A string' %]  Sets the value of str.
     [% 'A string'.split %]  Splits the string on ' ' and returns the list.
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
 
-=item Double quoted string.
+=item Double quoted strings.
 
 Returns the string.  Variable interpolation happens.
 
     [% "foobar" %]                   Prints "foobar".
     [% "$foo"   %]                   Prints "bar" (assuming the value of foo is bar).
-    [% "${foo}  %]                   Prints "bar" (assuming the value of foo is bar).
+    [% "${foo}" %]                   Prints "bar" (assuming the value of foo is bar).
     [% "foobar\n" %]                 Prints "foobar\n".  # the \n is a newline.
     [% str = "Hello" %]              Sets the value of str.
     [% "foo".replace('foo','bar') %] Prints "bar".
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
 
-=item Array Constructor.
+=item Array Constructs.
 
     [% [1, 2, 3] %]               Prints something like ARRAY(0x8309e90).
-    [% [4, 5, 6].size %]          Prints 3.
-    [% [7, 8, 9].reverse.0 %]     Prints 9.
     [% array1 = [1 .. 3] %]       Sets the value of array1.
     [% array2 = [foo, 'a', []] %] Sets the value of array2.
+    [% [4, 5, 6].size %]          Prints 3.
+    [% [7, 8, 9].reverse.0 %]     Prints 9.
 
-Note: virtual methods can only be used on array contructors in CET, not in TT.
+Note: virtual methods can only be used on array contructs in CET, not in TT.
 
-=item Hash Constructor.
+=item Quoted Array Constructs.
+
+    [% qw/1 2 3/ %]                Prints something like ARRAY(0x8309e90).
+    [% array1 = qw{Foo Bar Baz} %] Sets the value of array1.
+    [% qw[4 5 6].size %]           Prints 3.
+    [% qw(Red Blue).reverse.0 %]   Prints Blue.
+
+Note: this works in CET and is planned for TT3.
+
+=item Hash Constructs.
 
     [% {foo => 'bar'} %]                 Prints something like HASH(0x8305880)
+    [% hash = {foo => 'bar', c => {}} %] Sets the value of hash.
     [% {a => 'A', b => 'B'}.size %]      Prints 2.
     [% {'a' => 'A', 'b' => 'B'}.size %]  Prints 2.
-    [% hash = {foo => 'bar', c => {}} %] Sets the value of hash.
+    [% name = "Tom" %]
+    [% {Tom => 'You are Tom',
+        Kay => 'You are Kay'}.$name %]   Prints You are Tom
 
-Note: virtual methods can only be used on hash contructors in CET, not in TT.
+Note: virtual methods can only be used on hash contructs in CET, not in TT.
 
 =head1 EXPRESSIONS
 
-Expressions are one or more variables or literals joined together
+Expressions are one or more variables or literals joined together with
 operators.  An expression can be used anywhere a variable can be used
-with the exception of the variable name of SET, and the filename of
-PROCESS, INCLUDE, WRAPPER, and INSERT.
+with the exception of the variable name in the SET directive, and the
+filename of PROCESS, INCLUDE, WRAPPER, and INSERT.
 
 The following section shows some samples of expressions.  For a full list
 of available operators, please see the section titled OPERATORS.
@@ -563,13 +726,16 @@ the "|" means to always call the virtual method or filter rather than
 looking in the hashref for a key by that name, or trying to call that
 method on the object.  This is similar to how TT3 will function.
 
+Virtual methods are also made available via Virtual Objects which
+are discussed in a later section.
+
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
 The following is the list of builtin virtual methods and filters
 that can be called on scalar data types.  In CET and TT3, filters and
-virtual methods are more closely related.  In general anywhere a
-virtual method can be used a filter can be used also - and vice versa
-- all scalar virtual methods can be used as filters.
+virtual methods are more closely related than in TT2.  In general anywhere a
+virtual method can be used a filter can be used also - and likewise all scalar
+virtual methods can be used as filters.
 
 In addition to the filters listed below, CET will automatically load
 Template::Filters and use them if Template::Toolkit is installed.
@@ -578,7 +744,20 @@ In addition to the scalar virtual methods, any scalar will be
 automatically converted to a single item list if a list virtual method
 is called on it.
 
+Scalar virtual methods are also available through the "Text" virtual
+object (except for true filters such as eval and redirect).
+
 =over 4
+
+=item '0'
+
+    [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays.
+
+=item as
+
+    [% item.as('%d') %]
+
+Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
 
 =item chunk
 
@@ -600,9 +779,13 @@ is called on it.
 
 =item eval
 
-    [% item.eval %] Process the string as though it was a template.  This will start the parsing
-    engine and will use the same configuration as the current process.  CET is several times
-    faster at doing this than TT is and is considered acceptable.
+    [% item.eval %]
+
+Process the string as though it was a template.  This will start the parsing
+engine and will use the same configuration as the current process.  CET is several times
+faster at doing this than TT is and is considered acceptable.
+
+This is a filter and is not available via the Text virtual object.
 
 =item evaltt
 
@@ -625,6 +808,10 @@ is called on it.
 
     [% item.html %] Performs a very basic html encoding (swaps out &, <, > and " for the html entities)
 
+=item int
+
+    [% item.int %] Return the integer portion of the value (0 if none).
+
 =item lcfirst
 
     [% item.lcfirst %] Capitalize the leading letter.
@@ -632,6 +819,10 @@ is called on it.
 =item length
 
     [% item.length %] Return the length of the string.
+
+=item list
+
+    [% item.list %] Returns a list with a single value of the item.
 
 =item lower
 
@@ -647,14 +838,25 @@ is called on it.
 
     [% item.null %] Do nothing.
 
+=item rand
+
+    [% item = 10; item.rand %] Returns a number greater or equal to 0 but less than 10.
+    [% 1.rand %]
+
+Note: This filter is not available as of TT2.15.
+
 =item remove
 
     [% item.remove("\s+") %] Same as remove - but is global and replaces with nothing.
 
 =item redirect
 
-    [% item.redirect("output_file.html") %] - Writes the contents out to the specified file.  The filename
-    must be relative to the OUTPUT_PATH configuration variable and the OUTPUT_PATH variable must be set.
+    [% item.redirect("output_file.html") %]
+
+Writes the contents out to the specified file.  The filename
+must be relative to the OUTPUT_PATH configuration variable and the OUTPUT_PATH variable must be set.
+
+This is a filter and is not available via the Text virtual object.
 
 =item repeat
 
@@ -666,7 +868,7 @@ is called on it.
 
     [% item.replace("\s+", "&nbsp;") %] Globally replace all space with &nbsp;
 
-    [% item.replace("foo", "bar", 0) Replace the first instance of foo with bar.
+    [% item.replace("foo", "bar", 0) Replace only the first instance of foo with bar.
 
     [% item.replace("(\w+)", "($1)") %] Surround all words with parenthesis.
 
@@ -678,7 +880,7 @@ is called on it.
 
     [% item.size %] Always returns 1.
 
-=item split    => \&vmethod_split,
+=item split
 
     [% item.split %] Returns an arrayref from the item split on " "
 
@@ -716,11 +918,22 @@ is called on it.
 
 =head2 LIST VIRTUAL METHODS
 
-=over 4
-
 The following methods can be called on an arrayref type data structures (scalar
 types will automatically promote to a single element list and call these methods
 if needed):
+
+Additionally, list virtual methods can be accessed via the List
+Virtual Object.
+
+=over 4
+
+=item as
+
+    [% mylist.as('%s', ', ') %]
+
+Passed a pattern and an string to join on.  Returns a string of the values of the list
+formatted with the passed pattern and joined with the passed string.
+Default pattern is %s and the default join string is a space.
 
 =item first
 
@@ -768,6 +981,13 @@ if needed):
 
     [% mylist.push(23) %] Adds an element to the end of the arrayref (the stash is modified).
 
+=item random
+
+    [% mylist.random %] Returns a random item from the list.
+    [% ['a' .. 'z'].random %]
+
+Note: This filter is not available as of TT2.15.
+
 =item reverse
 
     [% mylist.reverse %] Returns the list in reverse order.
@@ -810,7 +1030,18 @@ if needed):
 
 The following methods can be called on hash type data structures:
 
+Additionally, list virtual methods can be accessed via the Hash
+Virtual Object.
+
 =over 4
+
+=item as
+
+    [% myhash.as('%s => %s', "\n") %]
+
+Passed a pattern and an string to join on.  Returns a string of the key/value pairs
+of the hash formatted with the passed pattern and joined with the passed string.
+Default pattern is "%s\t%s" and the default join string is a newline.
 
 =item defined
 
@@ -836,6 +1067,14 @@ The following methods can be called on hash type data structures:
 =item import
 
     [% myhash.import(hash2) %]  Overlays the keys of hash2 over the keys of myhash.
+
+=item item
+
+    [% myhash.item(key) %] Returns the hashes value for that key.
+
+=item items
+
+    [% myhash.items %] Returns a list of the key and values (flattened hash)
 
 =item keys
 
@@ -868,14 +1107,100 @@ The following methods can be called on hash type data structures:
 
 =back
 
+=head1 VIRTUAL OBJECTS
+
+TT3 has a concept of Text, List, and Hash virtual objects which provide
+direct access to the scalar, list, and hash virtual methods.  In the TT3
+engine this will allow for more concise generated code.  Because CET does
+not generated perl code to be executed later, CET provides for these virtual
+objects but does so as more of a namespace (using the methods does not
+provide a speed optimization in your template - just may help clarify things).
+
+    [% a = "foo"; a.length %] => 3
+
+    [% a = "foo"; Text.length(a) %] => 3
+
+    [% a = Text.new("foo"); a.length %] => 3
+
+
+    [% a = [1 .. 30]; a.size %] => 30
+
+    [% a = [1 .. 30]; List.size(a) %] => 30
+
+    [% a = List.new(1 .. 30); a.size %] => 30
+
+
+    [% a = {a => 1, b => 2}; a.size %] => 2
+
+    [% a = {a => 1, b => 2}; Hash.size(a) %] => 2
+
+    [% a = Hash.new({a => 1, b => 2}); a.size %] => 2
+
+    [% a = Hash.new(a => 1, b => 2); a.size %] => 2
+
+    [% a = Hash.new(a = 1, b = 2); a.size %] => 2
+
+    [% a = Hash.new('a', 1, 'b', 2); a.size %] => 2
+
+One limitation is that if you pass a key named "Text",
+"List", or "Hash" in your variable stash - the corresponding
+virtual object will be hidden.
+
+Additionally, you can use all of the Virtual object methods with
+the pipe operator.
+
+    [% {a => 1, b => 2}
+       | Hash.keys
+       | List.join(", ") %] => a, b
+
+Again, there aren't any speed optimizations to using the virtual
+objects in CET, but it can help clarify the intent in some cases.
+
+Note: these aren't really objects.  All of the "virtual objects" are
+references to the $SCALAR_OPS, $LIST_OPS, and $HASH_OPS hashes
+found in the $VOBJS hash of CGI::Ex::Template.
+
 =head1 DIRECTIVES
 
-This section contains the alphabetical list of DIRECTIVES available
-in the TT language.  DIRECTIVES are the "functions" and control
-structures that implement the Template Toolkit mini-language.  For
-further discussion and examples, please refer to the TT directives
-documentation.
+This section contains the alphabetical list of DIRECTIVES available in
+the TT language.  DIRECTIVES are the "functions" and control
+structures of the Template Toolkit mini-language.  For further
+discussion and examples beyond what is listed below, please refer to
+the TT directives documentation.
 
+    [% IF 1 %]One[% END %]
+    [% FOREACH a = [1 .. 3] %]
+        a = [% a %]
+    [% END %]
+
+    [% SET a = 1 %][% SET a = 2 %][% GET a %]
+
+Multiple directives can be inside the same set of '[%' and '%]' tags
+as long as they are separated by space or semi-colons (;).  Any block
+directive that can also be used as a post-operative directive (such as
+IF, WHILE, FOREACH, UNLESS, FILTER, and WRAPPER) must be separated
+from preceding directives with a semi-colon if it is being used as a
+block directive.  It is more safe to always use a semi-colon.  Note:
+separating by space is only available in CET but is a planned TT3
+feature.
+
+    [% SET a = 1 ; SET a = 2 ; GET a %]
+    [% SET a = 1
+       SET a = 2
+       GET a
+     %]
+
+    [% GET 1
+         IF 0   # is a post-operative
+       GET 2 %] # prints 2
+
+    [% GET 1;
+       IF 0     # it is block based
+         GET 2
+       END
+     %]         # prints 1
+
+The following is the list of directives.
 
 =over 4
 
@@ -1648,6 +1973,19 @@ A simple fix is to do any of the following:
 This shouldn't be too much hardship and offers the great return of disambiguating
 virtual method access.
 
+=item C<++ -->
+
+Pre and post increment and decrement.  My be used as either a prefix
+or postfix operator.
+
+    [% ++a %][% ++a %] => 12
+
+    [% a++ %][% a++ %] => 01
+
+    [% --a %][% --a %] => -1-2
+
+    [% a-- %][% a-- %] => 0-1
+
 =item C<**  ^  pow>
 
 Binary.  X raised to the Y power.  This isn't available in TT 2.15.
@@ -1658,11 +1996,9 @@ Binary.  X raised to the Y power.  This isn't available in TT 2.15.
 
 Unary not.  Negation of the value.
 
-=item C<-  unary_minus>
+=item C<->
 
-Unary minus.  Returns the value multiplied by -1.  The operator
-"unary_minus" is used internally by CGI::Ex::Template to provide for -
-to be listed in the precedence table twice.
+Prefix minus.  Returns the value multiplied by -1.
 
     [% a = 1 ; b = -a ; b %] => -1
 
@@ -1744,10 +2080,20 @@ The .. operator is the only operator that returns a list of items.
 
 =item C<? :>
 
-Trinary.  Can be nested with other ?: pairs.
+Ternary.  Can be nested with other ?: pairs.
 
     [% 1 ? 2 : 3 %] => 2
     [% 0 ? 2 : 3 %] => 3
+
+=item C<*= += -= /= **= %= ~=>
+
+Self-modifying assignment.  Sets the left hand side
+to the operation of the left hand side and right (clear as mud).
+In order to not conflict with SET, FOREACH and other operations, this
+operator is only available in parenthesis.
+
+   [% a = 2 %][%  a += 3  %] --- [% a %]    => --- 5   # is was handled by SET
+   [% a = 2 %][% (a += 3) %] --- [% a %]    => 5 --- 5
 
 =item C<=>
 
@@ -1755,7 +2101,8 @@ Assignment.  Sets the left-hand side to the value of the righthand side.  In ord
 to not conflict with SET, FOREACH and other operations, this operator is only
 available in parenthesis.  Returns the value of the righthand side.
 
-   [% (a = 1) %] --- [% a %] => 1 --- 1
+   [%  a = 1  %] --- [% a %]    => --- 1   # is was handled by SET
+   [% (a = 1) %] --- [% a %]    => 1 --- 1
 
 =item C<not  NOT>
 
@@ -1936,49 +2283,7 @@ compiled template.  Variables defined here cannot be overridden.
     Will have the value 42 compiled in.
 
 Constants defined in this way can be chained as in [%
-constant.foo.bar.baz %] but may only interpolate values that are set
-before the compile process begins.  This goes one step beyond TT in
-that any variable set in VARIABLES, or PRE_DEFINE, or passed to the
-process method are allowed - they are not in TT.  Variables defined in
-the template are not available during the compile process.
-
-    GOOD:
-
-    CONSTANTS => {
-        foo  => {
-            bar => {baz => 42},
-            bim => 57,
-        },
-        bing => 'baz',
-        bang => 'bim',
-    },
-    VARIABLES => {
-        bam  => 'bar',
-    },
-
-    In the template
-
-    [% constants.foo.${constants.bang} %]
-
-    Will correctly print 57.
-
-    GOOD (non-tt behavior)
-
-    [% constants.foo.$bam.${constants.bing} %]
-
-    CGI::Ex::Template will print 42 because the value of bam is
-    known at compile time.  TT would print '' because the value of $bam
-    is not yet defined in the TT engine.
-
-    BAD:
-
-    In the template:
-
-    [% bam = 'somethingelse' %]
-    [% constants.foo.$bam.${constants.bing} %]
-
-    Will still print 42 because the value of bam used comes from
-    variables defined before the template was compiled.  TT will still print ''.
+constant.foo.bar.baz %].
 
 =item CONSTANT_NAMESPACE
 
@@ -1987,9 +2292,9 @@ value is 'constants'.
 
 =item DEBUG
 
-    Takes a list of constants |'ed together which enables different
-    debugging modes.  Alternately the lowercase names may be used (multiple
-    values joined by a ",".
+Takes a list of constants |'ed together which enables different
+debugging modes.  Alternately the lowercase names may be used
+(multiple values joined by a ",").
 
     The only supported TT values are:
     DEBUG_UNDEF (2)    - debug when an undefined value is used.
@@ -2010,7 +2315,7 @@ directive.
 
 =item DEFAULT
 
-The name of a default template file to use if the passed on is not found.
+The name of a default template file to use if the passed one is not found.
 
 =item DELIMITER
 
@@ -2434,7 +2739,7 @@ hash that contains the parsed tree.
 Allow for the multitudinous ways that TT parses arguments.  This allows
 for positional as well as named arguments.  Named arguments can be separated with a "=" or "=>",
 and positional arguments should be separated by " " or ",".  This only returns an array
-of parsed variables.  Use vivify_args to translate to the actual values.
+of parsed variables.   To get the actual values, you must call get_variable on each value.
 
 =item C<parse_tree>
 
@@ -2470,11 +2775,6 @@ Called when a variable is undefined during a GET directive.  This is useful to
 see if a value that is about to get inserted into the text is undefined.  undefined_any is a little
 too general for most cases.  Also, you may pass a coderef via the UNDEFINED_GET configuration variable.
 
-=item C<vivify_args>
-
-Turns an arrayref of arg identities parsed by parse_args and turns
-them into the actual values.
-
 =back
 
 
@@ -2495,7 +2795,7 @@ upon operator precedence.
 Used to create a "pseudo" context object that allows for portability
 of TT plugins, filters, and perl blocks that need a context object.
 
-=ITEM C<DEBUG>
+=item C<DEBUG>
 
 TT2 Holdover that is used once for binmode setting during a TT2 test.
 

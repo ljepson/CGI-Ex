@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.01';
+$VERSION = '2.02';
 
 ###----------------------------------------------------------------###
 
@@ -144,6 +144,10 @@ sub get_valid_auth {
     $self->login_print;
     my $data = $self->last_auth_data;
     eval { die defined($data) ? $data : "Requesting credentials" };
+
+    ### allow for a sleep to help prevent brute force
+    sleep($self->failed_sleep) if defined($data) && $data->error ne 'Login expired' && $self->failed_sleep;
+
     return;
 }
 
@@ -226,6 +230,7 @@ sub use_blowfish     { shift->{'use_blowfish'}     ||= ''             }
 sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||= 0) }
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
+sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 
 sub logout_redirect {
     my $self = shift;
@@ -986,6 +991,12 @@ Default key name is "cea_expires_min".  Default field value is 6 * 60 (six hours
 This value will have no effect when use_plaintext or use_crypt is set.
 
 A value of -1 means no expiration.
+
+=item C<failed_sleep>
+
+Number of seconds to sleep if the passed tokens are invalid.  Does not apply
+if validation failed because of expired tokens.  Default value is 0.
+Setting to 0 disables any sleeping.
 
 =item C<form_name>
 
