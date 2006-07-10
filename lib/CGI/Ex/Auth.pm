@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.03';
+$VERSION = '2.04';
 
 ###----------------------------------------------------------------###
 
@@ -315,7 +315,9 @@ sub login_hash_common {
         $self->key_time    => $self->server_time,
         $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
         $self->key_expires_min => $self->expires_min,
-
+        text_user          => $self->text_user,
+        text_pass          => $self->text_pass,
+        text_save          => $self->text_save,
     };
 }
 
@@ -337,7 +339,7 @@ sub verify_token {
         my $key;
         for my $armor ('none', 'base64', 'blowfish') { # try with and without base64 encoding
             my $copy = ($armor eq 'none')           ? $token
-                     : ($armor eq 'base64')         ? decode_base64($token)
+                     : ($armor eq 'base64')         ? eval { local $^W; decode_base64($token) }
                      : ($key = $self->use_blowfish) ? decrypt_blowfish($token, $key)
                      : next;
             if ($copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / (.*) / ([a-fA-F0-9]{32}) (?: / (sh\.\d+\.\d+))? $|x) {
@@ -383,6 +385,13 @@ sub verify_token {
     } elsif (! defined($pass = eval { $self->get_pass_by_user($data->{'user'}) })) {
         $data->add_data({details => $@});
         $data->error('Could not get pass');
+    } elsif (ref $pass eq 'HASH') {
+        my $extra = $pass;
+        $pass = exists($extra->{'real_pass'}) ? delete($extra->{'real_pass'})
+              : exists($extra->{'password'})  ? delete($extra->{'password'})
+              : do { $data->error('Data returned by get_pass_by_user did not contain real_pass or password'); undef };
+        $data->error('Invalid login') if ! defined $pass && ! $data->error;
+        $data->add_data($extra);
     }
     return $data if $data->error;
 
@@ -622,16 +631,16 @@ sub login_form {
     <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
     <tr class="login_username">
-      <td>Username:</td>
+      <td>[% text_user %]</td>
       <td><input name="[% key_user %]" type="text" size="30" value=""></td>
     </tr>
     <tr class="login_password">
-      <td>Password:</td>
+      <td>[% text_pass %]</td>
       <td><input name="[% key_pass %]" type="password" size="30" value=""></td>
     </tr>
     <tr class="login_save">
       <td colspan="2">
-        <input type="checkbox" name="[% key_save %]" value="1"> Save Password ?
+        <input type="checkbox" name="[% key_save %]" value="1"> [% text_save %]
       </td>
     </tr>
     <tr class="login_submit">
@@ -644,6 +653,10 @@ sub login_form {
     </div>
 };
 }
+
+sub text_user { my $self = shift; return defined($self->{'text_user'}) ? $self->{'text_user'} : 'Username:' }
+sub text_pass { my $self = shift; return defined($self->{'text_pass'}) ? $self->{'text_pass'} : 'Password:' }
+sub text_save { my $self = shift; return defined($self->{'text_save'}) ? $self->{'text_save'} : 'Save Password ?' }
 
 sub login_script {
   return q {
@@ -797,6 +810,9 @@ defined separately.
     secure_hash_keys
     template_args
     template_include_path
+    text_user
+    text_pass
+    text_save
     use_base64
     use_blowfish
     use_crypt
@@ -946,6 +962,9 @@ Passed to the template swapped during login_print.
     $self->key_time    # $self->server_time,     # the server's time
     $self->key_payload # $data->{'payload'}      # the payload (if any)
     $self->key_expires_min # $self->expires_min  # how many minutes crams are valid
+    text_user          # $self->text_user        # template text Username:
+    text_pass          # $self->text_pass        # template text Password:
+    text_save          # $self->text_save        # template text Save Password ?
 
 =item C<key_logout>
 
@@ -1028,6 +1047,26 @@ valid password for the user.  It can always return plaintext.  If use_crypt is
 enabled, it should return the crypted password.  If use_plaintext and use_crypt
 are not enabled, it may return the md5 sum of the password.
 
+   get_pass_by_user => sub {
+       my ($auth_obj, $user) = @_;
+       return $some_obj->get_pass({user => $user});
+   }
+
+Alternately, get_pass_by_user may return a hashref of data items that
+will be added to the data object if the token is valid.  The hashref
+must also contain a key named real_pass or password that contains the
+password.  Note that keys passed back in the hashref that are already
+in the data object will override those in the data object.
+
+   get_pass_by_user => sub {
+       my ($auth_obj, $user) = @_;
+       my ($pass, $user_id) = $some_obj->get_pass({user => $user});
+       return {
+           password => $pass,
+           user_id  => $user_id,
+       };
+   }
+
 =item C<cgix>
 
 Returns a CGI::Ex object.
@@ -1080,8 +1119,18 @@ Contains javascript that will attach to the form from login_form.  This script
 is capable of taking the login_fields and creating an md5 cram which prevents
 the password from being passed plaintext.
 
+=item C<text_user, text_pass, text_save>
+
+The text items shown in the default login template.  The default values are:
+
+    text_user  "Username:"
+    text_pass  "Password:"
+    text_save  "Save Password ?"
+
+=back
+
 =head1 AUTHORS
 
-Paul Seamons <perlspam at seamons dot com>
+Paul Seamons <paul at seamons dot com>
 
 =cut

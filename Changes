@@ -1,3 +1,12 @@
+2.04   2006-07-10
+        * Allow for items not in group order to get added to validation correctly in CGI::Ex::Validate.
+        * Add samples/index.cgi
+        * Fix samples/app/cgi_ex_* to actually work.
+        * Added CGI::Ex::JSONDump
+        * Change Validate to use JSONDump instaed of JSON
+        * Various perldoc and other bug fixes.
+        * Removed CGI-Ex.spec - use cpan2rpm or cpan2deb instead.
+
 2.03   2006-06-10
         * Fix the associativity of operators in Template to match perl
         * Allow for multiple prefix operators.

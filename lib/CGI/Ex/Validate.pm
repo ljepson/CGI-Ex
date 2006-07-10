@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.03';
+$VERSION = '2.04';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -126,6 +126,7 @@ sub validate {
       next if $found{$field};
       my $field_val = $group_val->{$field};
       die "Found a nonhashref value on field $field" if ! UNIVERSAL::isa($field_val, 'HASH');
+      $field_val->{'field'} = $field if ! defined $field_val->{'field'};
       push @$fields, $field_val;
     }
 
@@ -795,7 +796,16 @@ sub generate_js {
         "$js_uri_path/CGI/Ex/validate.js";
     };
 
-    if (eval { require JSON }) {
+    if (! $self->{'no_jsondump'} && eval { require CGI::Ex::JSONDump }) {
+        my $json = CGI::Ex::JSONDump->new({pretty => 1})->dump($val_hash);
+        return qq{<script src="$js_uri_path_validate"></script>
+<script>
+document.validation = $json;
+if (document.check_form) document.check_form("$form_name");
+</script>
+};
+
+    } elsif (! $self->{'no_json'} && eval { require JSON }) {
         my $json = JSON->new(pretty => 1)->objToJson($val_hash);
 
         return qq{<script src="$js_uri_path_validate"></script>

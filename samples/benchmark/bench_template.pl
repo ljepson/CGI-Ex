@@ -83,6 +83,27 @@ my $longer_template = "[% INCLUDE bar.tt %]"
     ."[% array.join('|') %]"
     ."[% PROCESS bar.tt %]";
 
+my $hello2000 = "<html><head><title>[% title %]</title></head><body>
+[% array = [ \"Hello\", \"World\", \"2000\", \"Hello\", \"World\", \"2000\" ] %]
+[% sorted = array.sort %]
+[% multi = [ sorted, sorted, sorted, sorted, sorted ] %]
+<table>
+[% FOREACH row = multi %]
+  <tr bgcolor=\"[% loop.count % 2 ? 'gray' : 'white' %]\">
+  [% FOREACH col = row %]
+    <td align=\"center\"><font size=\"+1\">[% col %]</font></td>
+  [% END %]
+  </tr>
+[% END %]
+</table>
+[% param = integer %]
+[% FOREACH i = [ 1 .. 10 ] %]
+  [% var = i + param %]"
+  .("\n  [%var%] Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World Hello World <br/>"x20)."
+[% END %]
+</body></html>
+";
+
 ###----------------------------------------------------------------###
 ### set a few globals that will be available in our subs
 my $show_list = grep {$_ eq '--list'} @ARGV;
@@ -146,7 +167,8 @@ my $tests = {                                                             #     
     '43_filteruri' => "[% ' ' | uri %]",                                  #  132%  #  550%  #  379%  #  471%  # 12524.4/s #
     '44_filterevl' => "[% foo | eval %]",                                 #  303%  #  530%  #  434%  #  478%  # 5475.5/s #
     '45_capture'   => "[% foo = BLOCK %]Hi[% END %][% foo %]",            #  102%  #  386%  #  291%  #  304%  # 10606.5/s #
-    '46_complex'   => "$longer_template",                                 #   55%  #  288%  #  133%  #  251%  # 1230.3/s #
+    '46_complex'   => "$longer_template",                                 #   60%  #  290%  #  160%  #  270%  # 1054.3/s #
+    '47_hello2000' => "$hello2000",                                       #    2%  #  136%  #   39%  #  115%  # 184.8/s #
     # overall                                                             #   95%  #  406%  #  251%  #  346%  #
 
 

@@ -17,7 +17,7 @@ use vars qw(@ISA @EXPORT @EXPORT_OK $VERSION
 use strict;
 use Exporter;
 
-$VERSION   = '2.03';
+$VERSION   = '2.04';
 @ISA       = qw(Exporter);
 @EXPORT    = qw(dex dex_warn dex_text dex_html ctrace dex_trace);
 @EXPORT_OK = qw(dex dex_warn dex_text dex_html ctrace dex_trace debug);
@@ -76,9 +76,13 @@ sub _what_is_this {
   ### dump it out
   my @dump = map {&$SUB($_)} @_;
   my @var  = ('$VAR') x ($#dump + 1);
-  if ($line =~ s/^ .*\b \Q$called\E ( \(?\s* | \s+ )//x
-      && $line =~ s/(?:\s+if\s+.+)? ;? \s*$//x) {
-    $line =~ s/ \s*\) $ //x if $1 && $1 =~ /\(/;
+  my $hold;
+  if ($line =~ s/^ .*\b \Q$called\E ( \s* \( \s* | \s+ )//x
+      && ($hold = $1)
+      && (   $line =~ s/ \s* \b if \b .* \n? $ //x
+          || $line =~ s/ \s* ; \s* $ //x
+          || $line =~ s/ \s+ $ //x)) {
+    $line =~ s/ \s*\) $ //x if $hold =~ /^\s*\(/;
     my @_var = map {/^[\"\']/ ? 'String' : $_} split (/\s*,\s*/, $line);
     @var = @_var if $#var == $#_var;
   }
