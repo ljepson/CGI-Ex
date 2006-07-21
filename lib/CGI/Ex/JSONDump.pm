@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.05';
+    $VERSION  = '2.06';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
@@ -117,7 +117,7 @@ sub js_escape {
     utf8::decode($str) if $self->{'utf8'} && &utf8::decode;
 
     ### escape <html> and </html> tags in the text
-    $str =~ s{(</? (?: htm | scrip | !-))}{$1$quote+$quote}gx;
+    $str =~ s{(</? (?: htm | scrip | !-) | --(?=>) )}{$1$quote+$quote}gx;
 
     ### add nice newlines (unless pretty is off)
     if ($self->{'str_nl'} && length($str) > 80) {

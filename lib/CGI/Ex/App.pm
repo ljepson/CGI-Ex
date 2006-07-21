@@ -10,9 +10,10 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.05';
+    $VERSION = '2.06';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
+    eval {require Scalar::Util};
 }
 
 sub croak {
@@ -767,7 +768,9 @@ sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     my $args = $self->run_hook('template_args', $step);
-    $args->{'INCLUDE_PATH'} ||= sub { $self->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
+    my $copy = $self;
+    eval {require Scalar::Util; Scalar::Util::weaken($copy)};
+    $args->{'INCLUDE_PATH'} ||= sub { $copy->base_dir_abs || die "Could not find base_dir_abs while looking for template INCLUDE_PATH on step \"$step\"" };
 
     require CGI::Ex::Template;
     my $t = CGI::Ex::Template->new($args);
@@ -951,14 +954,8 @@ sub hash_base {
 
     return $self->{'hash_base'} ||= do {
         ### create a weak copy of self to use in closures
-        my $copy;
-        if (eval {require Scalar::Util} && defined &Scalar::Util::weaken) {
-            $copy = $self;
-            Scalar::Util::weaken($copy);
-        } else {
-            $copy = bless {%$self}, ref($self); # hackish way to avoid circular refs on older perls (pre 5.8)
-        }
-
+        my $copy = $self;
+        eval {require Scalar::Util; Scalar::Util::weaken($copy)};
         my $hash = {
             script_name     => $ENV{'SCRIPT_NAME'} || $0,
             path_info       => $ENV{'PATH_INFO'}   || '',
