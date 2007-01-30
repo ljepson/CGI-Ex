@@ -7,7 +7,7 @@ CGI::Ex::Validate - another form validator - but it does javascript in parallel
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.06';
+$VERSION = '2.07';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -301,6 +301,11 @@ sub validate_buddy {
     if (! $field_val->{'do_not_trim'}) { # whitespace
       $value =~ s/^\s+//;
       $value =~ s/\s+$//;
+      $modified = 1;
+    }
+    if ($field_val->{'trim_control_chars'}) {
+      $value =~ y/\t/ /;
+      $value =~ y/\x00-\x1F//d;
       $modified = 1;
     }
     if ($field_val->{'to_upper_case'}) { # uppercase
@@ -1720,6 +1725,13 @@ from submitted values.  Set do_not_trim to 1 to allow it to
 not trim.
 
     {field => 'foo', do_not_trim => 1}
+
+=item C<trim_control_chars>
+
+Off by default.  If set to true, removes characters in the
+\x00 to \x31 range (Tabs are translated to a single space).
+
+    {field => 'foo', trim_control_chars => 1}
 
 =item C<replace>
 

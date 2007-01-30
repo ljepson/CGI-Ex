@@ -7,7 +7,7 @@ CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -17,7 +17,7 @@ use strict;
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION  = '2.06';
+    $VERSION  = '2.07';
 
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
@@ -103,7 +103,7 @@ sub js_escape {
     return 'null'  if ! defined $str;
 
     ### allow things that look like numbers to show up as numbers (and those that aren't quite to not)
-    return $str if $str =~ /^ -? (?: \d{0,13} \. \d* [1-9] | \d{1,13}) $/x;
+    return $str if $str =~ /^ -? (?: [0-9]{0,13} \. \d* [1-9] | [1-9][0-9]{0,12}) $/x;
 
     my $quote = $self->{'single_quote'} ? "'" : '"';
 
@@ -228,7 +228,7 @@ include whitespace to make them more readable.
      {
        "a" : [
          1,
-         2,
+         2
        ]
      }
 
@@ -296,7 +296,7 @@ with unknown types will not be included in the javascript output.
 
 Should contain an arrayref of keys or a hashref whose keys are the
 keys to skip.  Default is unset.  Any keys of hashrefs (including
-nested hashrefs) that are in the skip_keys item will not be included
+nested hashrefs) that are listed in the skip_keys item will not be included
 in the javascript output.
 
     JSONDump({a => 1, b => 1}, {skip_keys => ['a'], pretty => 0});
@@ -319,7 +319,7 @@ be included in the javascript output.
 
 =item indent
 
-The level to indent each nested data structure level if pretty is true.  Default is "  ".
+The level to indent each nested data structure level if pretty is true.  Default is "  " (two spaces).
 
 =item hash_nl
 
@@ -336,11 +336,11 @@ The whitespace to add after each arrayref entry if pretty is true.  Default is "
 =item str_nl
 
 The whitespace to add in between newline separated strings if pretty is true or the output line is
-greater than 80 characters.  Default is "\n".
+greater than 80 characters.  Default is "\n" (if pretty is true).
 
     JSONDump("This is a long string\n"
              ."with plenty of embedded newlines\n"
-             ."and is greater than 80 characters.\n", {pretty => 1, str_nl => "\n"});
+             ."and is greater than 80 characters.\n", {pretty => 1});
 
     Would print
 
@@ -348,8 +348,16 @@ greater than 80 characters.  Default is "\n".
       +"with plenty of embedded newlines\n"
       +"and is greater than 80 characters.\n"
 
+    JSONDump("This is a long string\n"
+             ."with plenty of embedded newlines\n"
+             ."and is greater than 80 characters.\n", {pretty => 1, str_nl => ""});
+
+    Would print
+
+    "This is a long string\nwith plenty of embedded newlines\nand is greater than 80 characters.\n"
+
 If the string is less than 80 characters, or if str_nl is set to "", then the escaped
-string will be contained on a single line.
+string will be contained on a single line.  Setting pretty to 0 effectively sets str_nl equal to "".
 
 =back
 

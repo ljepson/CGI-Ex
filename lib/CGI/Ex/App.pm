@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2006 - Paul Seamons                                     #
+#  Copyright 2007 - Paul Seamons                                     #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.06';
+    $VERSION = '2.07';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
@@ -672,6 +672,29 @@ sub vob_args {
 sub stash {
     my $self = shift;
     return $self->{'stash'} ||= {};
+}
+
+sub clear_app {
+    my $self = shift;
+
+    delete @{ $self }{qw(
+        cgix
+        vob
+        form
+        cookies
+        stash
+        path
+        path_i
+        history
+        __morph_lineage_start_index
+        __morph_lineage
+        hash_errors
+        hash_fill
+        hash_swap
+        hash_common
+    )};
+
+    return $self;
 }
 
 ###----------------------------------------------------------------###
