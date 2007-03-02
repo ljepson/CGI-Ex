@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.07';
+    $VERSION = '2.08';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
@@ -122,6 +122,19 @@ sub nav_loop {
         ### allow for becoming another package (allows for some steps in external files)
         $self->morph($step);
 
+        ### allow for mapping path_info pieces to form elements
+        if (my $info = $ENV{'PATH_INFO'}) {
+            my $maps = $self->run_hook('path_info_map', $step) || [];
+            croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }'
+                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
+            foreach my $map (@$maps) {
+                my @match = $info =~ $map->[0];
+                next if ! @match;
+                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
+                last;
+            }
+        }
+
         ### run the guts of the step
         my $handled = $self->run_hook('run_step', $step);
 
@@ -182,10 +195,21 @@ sub path {
     if (! $self->{'path'}) {
         my $path = $self->{'path'} = []; # empty path
 
-        my $step = $self->form->{ $self->step_key };
-        $step = lc($1) if ! $step && $ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ m|^/(\w+)|;
+        ### add initial items to the form hash from path_info
+        if (my $info = $ENV{'PATH_INFO'}) {
+            my $maps = $self->path_info_map_base || [];
+            croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }'
+                if ! UNIVERSAL::isa($maps, 'ARRAY') || (@$maps && ! UNIVERSAL::isa($maps->[0], 'ARRAY'));
+            foreach my $map (@$maps) {
+                my @match = $info =~ $map->[0];
+                next if ! @match;
+                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
+                last;
+            }
+        }
 
         ### make sure the step is valid
+        my $step = $self->form->{$self->step_key};
         if (defined $step) {
             if ($step =~ /^_/) {         # can't begin with _
                 $self->stash->{'forbidden_step'} = $step;
@@ -203,6 +227,11 @@ sub path {
     }
 
     return $self->{'path'};
+}
+
+sub path_info_map_base {
+    my $self = shift;
+    return [[qr{/(\w+)}, $self->step_key]];
 }
 
 sub set_path {
@@ -700,6 +729,8 @@ sub clear_app {
 ###----------------------------------------------------------------###
 ### default hook implementations
 
+sub path_info_map { }
+
 sub run_step {
     my $self = shift;
     my $step = shift;
@@ -825,7 +856,7 @@ sub pre_step   { 0 } # success indicates we handled step (don't continue step or
 sub skip       { 0 } # success indicates to skip the step (and continue loop)
 sub prepare    { 1 } # failure means show step
 sub finalize   { 1 } # failure means show step
-sub post_print { 0 } # success indicates we handled step (don't continue loop)
+sub post_print { 0 }
 sub post_step  { 0 } # success indicates we handled step (don't continue step or loop)
 
 sub name_step {

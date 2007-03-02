@@ -2,27 +2,429 @@
 
 CGI::Ex::App - Anti-framework application framework.
 
+=head1 SYNOPSIS
+
+    #!/usr/bin/perl -w
+
+    use strict;
+    use base qw(CGI::Ex::App);
+
+    __PACKAGE__->navigate;
+    exit;
+
+    sub main_file_print {
+        return \ "Hello World";
+    }
+
+There is a longer "SYNOPSIS" after the process flow discussion.
+
 =head1 DESCRIPTION
 
 Fill in the blanks and get a ready made web application.  This module
 is somewhat similar in spirit to CGI::Application, CGI::Path, and
 CGI::Builder and any other "CGI framework."  As with the others,
 CGI::Ex::App tries to do as much of the mundane things, in a simple
-manner, without getting in the developer's way.  Your mileage may vary.
+manner, without getting in the developer's way.  However, there are
+various design patterns for CGI applications that CGI::Ex::App handles
+for you that the other frameworks require you to bring in extra support.
+The entire CGI::Ex suite has been taylored to work seamlessly together.
+Your mileage in building applications may vary.
 
 If you build applications that submit user information, validate it,
 re-display it, fill in forms, or separate logic into separate modules,
 then this module may be for you.  If all you need is a dispatch
-engine, then this still may be for you.  If all want is to look at
+engine, then this still may be for you.  If all you want is to look at
 user passed information, then this may still be for you.  If you like
 writing bare metal code, this could still be for you.  If you don't want
 to write any code, this module will help - but you still need to
-provide you key actions.
+provide your key actions and html.
 
+One of the great benefits of CGI::Ex::App vs. Catalyst or Rails style
+frameworks is that the model of CGI::Ex::App can be much more abstract
+as models often are.
+
+=head1 DEFAULT PROCESS FLOW
+
+The following pseudo-code describes the process flow
+of the CGI::Ex::App framework.  Several portions of the flow
+are encapsulated in hooks which may be completely overridden to give
+different flow.  All of the default actions are shown.  It may look
+like a lot to follow, but if the process is broken down into the
+discrete operations of step iteration, data validation, and template
+printing the flow feels more natural.
+
+=head2 navigate
+
+The process starts off by calling ->navigate.
+
+    navigate {
+        eval {
+            ->pre_navigate
+            ->nav_loop
+            ->post_navigate
+        }
+        # dying errors will run the ->handle_error method
+
+        ->destroy
+    }
+
+=head2 nav_loop
+
+The nav_loop method will run as follows:
+
+    nav_loop {
+        ->path (get the array of path steps)
+            # ->path_info_map_base (method - map ENV PATH_INFO to form)
+            # look in ->form for ->step_key
+            # make sure step is in ->valid_steps (if defined)
+
+        ->pre_loop($path)
+            # navigation stops if true
+
+        foreach step of path {
+
+            ->morph
+                # check ->allow_morph
+                # check ->allow_nested_morph
+                # ->morph_package (hook - get the package to bless into)
+                # ->fixup_after_morph if morph_package exists
+                # if no package is found, process continues in current file
+
+            ->path_info_map (hook - map PATH_INFO to form)
+
+            ->run_step (hook)
+
+            ->refine_path (hook)
+                # only called if run_step returned false (page not printed)
+                ->next_step (hook) # find next step and add to path
+                ->set_ready_validate(0) (hook)
+
+            ->unmorph
+                # only called if morph worked
+                # ->fixup_before_unmorph if blessed to current package
+
+            # exit loop if ->run_step returned true (page printed)
+
+        } end of foreach step
+
+        ->post_loop
+            # navigation stops if true
+
+        ->default_step
+        ->insert_path (puts the default step into the path)
+        ->nav_loop (called again recursively)
+
+    } end of nav_loop
+
+=head2 run_step (hook)
+
+For each step of the path the following methods will be run
+during the run_step hook.
+
+    run_step {
+        ->pre_step (hook)
+            # exits nav_loop if true
+
+        ->skip (hook)
+            # skips this step if true (stays in nav_loop)
+
+        ->prepare (hook - defaults to true)
+
+        ->info_complete (hook - ran if prepare was true)
+            ->ready_validate (hook)
+            return false if ! ready_validate
+            ->validate (hook - uses CGI::Ex::Validate to validate form info)
+                ->hash_validation (hook)
+                   ->file_val (hook)
+                       ->base_dir_abs
+                       ->base_dir_rel
+                       ->name_module
+                       ->name_step
+                       ->ext_val
+            returns true if validate is true or if nothing to validate
+
+        ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
+
+        if ! ->prepare || ! ->info_complete || ! ->finalize {
+            ->prepared_print
+                ->hash_base (hook)
+                ->hash_common (hook)
+                ->hash_form (hook)
+                ->hash_fill (hook)
+                ->hash_swap (hook)
+                ->hash_errors (hook)
+                # merge form, base, common, and fill into merged fill
+                # merge form, base, common, swap, and errors into merged swap
+                ->print (hook - passed current step, merged swap hash, and merged fill)
+                     ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
+                     ->swap_template (hook - processes the file with CGI::Ex::Template)
+                          ->template_args (hook - passed to CGI::Ex::Template->new)
+                     ->fill_template (hook - fills the any forms with CGI::Ex::Fill)
+                          ->fill_args (hook - passed to CGI::Ex::Fill::fill)
+                     ->print_out (hook - print headers and the content to STDOUT)
+
+            ->post_print (hook - used for anything after the print process)
+
+            # return true to exit from nav_loop
+        }
+
+        ->post_step (hook)
+            # exits nav_loop if true
+
+    } end of run_step
+
+It is important to learn the function and placement of each of the
+hooks in the process flow in order to make the most of CGI::Ex::App.
+It is enough to begin by learning a few common hooks - such as
+hash_validation, hash_swap, and finalize, and then learn about other
+hooks as needs arise.  Sometimes, it is enough to simply override the
+run_step hook and take care of processing the entire step yourself.
+
+Because of the hook based system, and because CGI::Ex::App uses
+sensible defaults, it is very easy to override a little or a lot which
+ends up giving the developer a lot of flexibility.
+
+Consequently, it should be possible to use CGI::Ex::App with the other
+frameworks such as CGI::Application or CGI::Prototype.  For these you
+could simple let each "runmode" call the run_step hook of CGI::Ex::App
+and you will instantly get all of the common process flow for free.
+
+=head1 MAPPING URI TO STEP
+
+The default out of the box configuration will map URIs to steps as follows:
+
+    # Assuming /cgi-bin/my_cgi is the program being run
+
+    URI:  /cgi-bin/my_cgi
+    STEP: main
+    FORM: {}
+    WHY:  No other information is passed.  The path method is
+          called which eventually calls ->default_step which
+          defaults to "main"
+
+    URI:  /cgi-bin/my_cgi?foo=bar
+    STEP: main
+    FORM: {foo => "bar"}
+    WHY:  Same as previous example except that QUERY_STRING
+          information was passed and placed in form.
+
+    URI:  /cgi-bin/my_cgi?step=my_step
+    STEP: my_step
+    FORM: {step => "my_step"}
+    WHY:  The path method is called which looks in $self->form
+          for the key ->step_key (which defaults to "step").
+
+    URI:  /cgi-bin/my_cgi?step=my_step&foo=bar
+    STEP: my_step
+    FORM: {foo => "bar", step => "my_step"}
+    WHY:  Same as before but has other parameters were passed.
+
+    URI:  /cgi-bin/my_cgi/my_step
+    STEP: my_step
+    FORM: {step => "my_step"}
+    WHY:  The path method is called which called path_info_map_base
+          which matched $ENV{'PATH_INFO'} using the default regex
+          of qr{^/(\w+)$} and place the result in
+          $self->form->{$self->step_key}.  Path then looks in
+          $self->form->{$self->step_key} for the initial step. See
+          the path_info_map_base method for more information.
+
+    URI:  /cgi-bin/my_cgi/my_step?foo=bar
+    STEP: my_step
+    FORM: {foo => "bar", step => "my_step"}
+    WHY:  Same as before but other parameters were passed.
+
+    URI:  /cgi-bin/my_cgi/my_step?step=other_step
+    STEP: other_step
+    FORM: {step => "other_step"}
+    WHY:  The same procedure took place, but when the PATH_INFO
+          string was matched, the form key "step" already existed
+          and was not replaced by the value from PATH_INFO.
+
+The remaining examples in this section are based on the assumption
+that the following method is installed in your script.
+
+    sub my_step_path_info_map {
+        return [
+            [qr{^/\w+/(\w+)/(\d+)$}, 'foo', 'id'],
+            [qr{^/\w+/(\w+)$}, 'foo'],
+            [qr{^/\w+/(.+)$}, 'anything_else'],
+        ];
+    }
+
+    URI:  /cgi-bin/my_cgi/my_step/bar
+    STEP: my_step
+    FORM: {foo => "bar"}
+    WHY:  The step was matched as in previous examples using
+          path_info_map_base.  However, the form key "foo"
+          was set to "bar" because the second regex returned
+          by the path_info_map hook matched the PATH_INFO string
+          and the corresponding matched value was placed into
+          the form using the keys specified following the regex.
+
+    URI:  /cgi-bin/my_cgi/my_step/bar/1234
+    STEP: my_step
+    FORM: {foo => "bar", id => "1234"}
+    WHY:  Same as the previous example, except that the first
+          regex matched the string.  The first regex had two
+          match groups and two form keys specified.  Note that
+          it is important to order your match regexes in the
+          order that will match the most data.  The third regex
+          would also match this PATH_INFO.
+
+    URI:  /cgi-bin/my_cgi/my_step/some/other/type/of/data
+    STEP: my_step
+    FORM: {anything_else => 'some/other/type/of/data'}
+    WHY:  Same as the previous example, except that the third
+          regex matched.
+
+    URI:  /cgi-bin/my_cgi/my_step/bar?bling=blang
+    STEP: my_step
+    FORM: {foo => "bar", bling => "blang"}
+    WHY:  Same as the first step, but additional QUERY_STRING
+          information was passed.
+
+    URI:  /cgi-bin/my_cgi/my_step/one%20two?bar=three%20four
+    STEP: my_step
+    FORM: {anything_else => "one two", bar => "three four"}
+    WHY:  The third path_info_map regex matched.  Note that the
+          %20 in bar was unescaped by CGI::param, but the %20
+          in anything_else was unescaped by Apache.  If you are
+          not using Apache, this behavior may vary.  CGI::Ex::App
+          doesn't decode parameters mapped from PATH_INFO.
+
+See the path method for more information about finding the initial step
+of the path.
+
+The form method calls CGI::Ex::form which uses CGI::param to retrieve
+GET and POST parameters.  See the form method for more information on
+how GET and POST parameters are parsed.
+
+See the path_info_map_base method, and path_info_map hook for more information
+on how the path_info maps function.
+
+A Dumper($self->dump_history) is very useful for determing what hooks have
+taken place.
+
+=head1 ADDING DATA VALIDATION TO A STEP
+
+CGI::Ex::App uses CGI::Ex::Validate for its data validation.  See CGI::Ex::Validate
+for more information about the many ways you can validate your data.
+
+The default hash_validation hook returns an empty hashref.  This means that passed
+in data is all valid and the script will automatically call the step's finalize method.
+
+The following shows how to some contrived validation to a step called "my_step".
+
+    sub my_step_hash_validation {
+        return {
+            username => {
+                required    => 1,
+                match       => 'm/^(\w+)$/',
+                match_error => 'The $field field may only contain word characters',
+                max_len     => 20,
+            },
+            password => {
+                required => 1,
+                max_len  => 15,
+            },
+            password_verify => {
+                validate_if => 'password',
+                equals      => 'password',
+            },
+            usertype => {
+                required => 1,
+                enum     => [qw(animal vegetable mineral)],
+            },
+        };
+    }
+
+The step will continue to display the html form until all of the fields pass
+validation.
+
+See the hash_validation hook and validate hook for more information about how
+this takes place.
+
+=head1 ADDING JAVASCRIPT DATA VALIDATION TO A STEP
+
+You must first provide a hash_validation hook as explained in the previous section.
+
+Once you have a hash_validation hook, you would place the following tags
+into your HTML template.
+
+    <form name="[% form_name %]" method="post">
+    ...
+    </form>
+    [% js_validation %]
+
+The "form_name" swap-in places a name on the form that the javascript returned by
+the js_validation swap-in will be able to find and check for validity.
+
+See the hash_validation, js_validation, and form_name hooks for more information.
+
+Also, CGI::Ex::validate.js allows for inline errors in addition to or in replacement
+of an alert message.  To use inline errors, you must provide an element in your
+HTML document where this inline message can be placed.  The common way to do it is as
+follows:
+
+    <input type="text" name="username"><br>
+    <span class="error" id="username_error">[% username_error %]</span>
+
+The span around the error allows for the error css class and it provides a location
+that the Javascript validation can populate with errors.  The [% username_error %] provides
+a location for errors generated on the server side to be swapped in.  If there was no error
+the [% username_error %] tag would default to "".
+
+=head1 ADDING ADDITIONAL TEMPLATE VARIABLES
+
+All variables returned by the hash_base, hash_common, hash_form, hash_swap, and
+hash_errors hooks are available for swapping in templates.
+
+The following shows how to add variables using the hash_swap hook on the step "main".
+
+    sub main_hash_swap {
+        return {
+            color   => 'red',
+            choices => [qw(one two three)],
+            "warn"  => sub { warn @_ },
+        };
+    }
+
+You could also return the fields from the hash_common hook and they would be available
+in both the template swapping as well as form filling.
+
+See the hash_base, hash_common, hash_form, hash_swap, hash_errors, swap_template, and
+template_args hooks for more information.
+
+The default template engine used is CGI::Ex::Template which is Template::Toolkit compatible.
+See the CGI::Ex::Template or Template::Toolkit documentation for the types of data
+that can be passed, and for the syntax that can be used.
+
+=head1 ADDING ADDITIONAL FORM FILL VARIABLES
+
+All variables returned by the hash_base, hash_common, hash_form, and hash_fill hooks
+are available for filling html fields in on templates.
+
+The following shows how to add variables using the hash_fill hook on the step "main".
+
+    sub main_hash_fill {
+        return {
+            color   => 'red',
+            choices => [qw(one two three)],
+        };
+    }
+
+You could also return the fields from the hash_common hook and they would be available
+in both the form filling as well as in the template swapping.
+
+See the hash_base, hash_common, hash_form, hash_swap, hash_errors, fill_template, and
+fill_args hooks for more information.
+
+The default form filler is CGI::Ex::Fill which is similar to HTML::FillInForm but
+has several benefits.  See the CGI::Ex::Fill module for the available options.
 
 =head1 SYNOPSIS (A LONG "SYNOPSIS")
 
-More examples will come with time.  Here are the basics for now.
 This example script would most likely be in the form of a cgi, accessible via
 the path http://yourhost.com/cgi-bin/my_app (or however you do CGIs on
 your system.  About the best way to get started is to paste the following
@@ -171,8 +573,9 @@ URI '/cgi-bin/my_app' would run the step 'main' first by default.  The
 URI '/cgi-bin/my_app?step=foo' would run the step 'foo' first.  The
 URI '/cgi-bin/my_app/bar' would run the step 'bar' first.
 
-CGI::Ex::App allows for running steps in a preset path.  The navigate
-method will go through a step of the path at a time and see if it is
+CGI::Ex::App allows for running steps in a preset path or each step may
+choose the next step that should follow.  The navigate
+method will go through one step of the path at a time and see if it is
 completed (various methods determine the definition of "completed").
 This preset type of path can also be automated using the CGI::Path
 module.  Rather than using a preset path, CGI::Ex::App also has
@@ -219,7 +622,7 @@ use external html templates).
 A few things to note about the template:
 
 First, we add a hidden form field called step.  This will be filled in
-at a later point with the current step we are on.
+automatically at a later point with the current step we are on.
 
 We provide locations to swap in inline errors.
 
@@ -289,150 +692,6 @@ ready to validate so it prints out the template page.
 
 For more of a real world example, it would be good to read the sample recipe db
 application included at the end of this document.
-
-=head1 DEFAULT PROCESS FLOW
-
-The following pseudo-code describes the process flow
-of the CGI::Ex::App framework.  Several portions of the flow
-are encapsulated in hooks which may be completely overridden to give
-different flow.  All of the default actions are shown.  It may look
-like a lot to follow, but if the process is broken down into the
-discrete operations of step iteration, data validation, and template
-printing the flow feels more natural.
-
-=head2 navigate
-
-The process starts off by calling ->navigate.
-
-    navigate {
-        eval {
-            ->pre_navigate
-            ->nav_loop
-            ->post_navigate
-        }
-        # dying errors will run the ->handle_error method
-
-        ->destroy
-    }
-
-=head2 nav_loop
-
-The nav_loop method will run as follows:
-
-    nav_loop {
-        ->path (get the array of path steps)
-            # look in $ENV{'PATH_INFO'}
-            # look in ->form for ->step_key
-            # make sure step is in ->valid_steps (if defined)
-
-        ->pre_loop($path)
-            # navigation stops if true
-
-        foreach step of path {
-
-            ->morph
-                # check ->allow_morph
-                # check ->allow_nested_morph
-                # ->morph_package (hook - get the package to bless into)
-                # ->fixup_after_morph if morph_package exists
-                # if no package is found, process continues in current file
-
-            ->run_step (hook)
-
-            ->refine_path (hook)
-                # only called if run_step returned false (page not printed)
-                ->next_step (hook) # find next step and add to path
-                ->set_ready_validate(0) (hook)
-
-            ->unmorph
-                # only called if morph worked
-                # ->fixup_before_unmorph if blessed to current package
-
-            # exit loop if ->run_step returned true (page printed)
-
-        } end of foreach step
-
-        ->post_loop
-            # navigation stops if true
-
-        ->default_step
-        ->insert_path (puts the default step into the path)
-        ->nav_loop (called again recursively)
-
-    } end of nav_loop
-
-=head2 run_step (hook)
-
-For each step of the path the following methods will be run
-during the run_step hook.
-
-    run_step {
-        ->pre_step (hook)
-            # exits nav_loop if true
-
-        ->skip (hook)
-            # skips this step if true (stays in nav_loop)
-
-        ->prepare (hook - defaults to true)
-
-        ->info_complete (hook - ran if prepare was true)
-            ->ready_validate (hook)
-            return false if ! ready_validate
-            ->validate (hook - uses CGI::Ex::Validate to validate form info)
-                ->hash_validation (hook)
-                   ->file_val (hook)
-                       ->base_dir_abs
-                       ->base_dir_rel
-                       ->name_module
-                       ->name_step
-                       ->ext_val
-            returns true if validate is true or if nothing to validate
-
-        ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
-
-        if ! ->prepare || ! ->info_complete || ! ->finalize {
-            ->prepared_print
-                ->hash_base (hook)
-                ->hash_common (hook)
-                ->hash_form (hook)
-                ->hash_fill (hook)
-                ->hash_swap (hook)
-                ->hash_errors (hook)
-                # merge form, base, common, and fill into merged fill
-                # merge form, base, common, swap, and errors into merged swap
-                ->print (hook - passed current step, merged swap hash, and merged fill)
-                     ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
-                     ->swap_template (hook - processes the file with CGI::Ex::Template)
-                          ->template_args (hook - passed to CGI::Ex::Template->new)
-                     ->fill_template (hook - fills the any forms with CGI::Ex::Fill)
-                          ->fill_args (hook - passed to CGI::Ex::Fill::fill)
-                     ->print_out (hook - print headers and the content to STDOUT)
-
-            ->post_print (hook - used for anything after the print process)
-
-            # return true to exit from nav_loop
-        }
-
-        ->post_step (hook)
-            # exits nav_loop if true
-
-    } end of run_step
-
-It is important to learn the function and placement of each of the
-hooks in the process flow in order to make the most of CGI::Ex::App.
-It is enough to begin by learning a few common hooks - such as
-hash_validation, hash_swap, and finalize, and then learn about other
-hooks as needs arise.  Sometimes, it is enough to simply override the
-run_step hook and take care of processing the entire step yourself.
-
-Because of the hook based system, and because CGI::Ex::App uses
-sensible defaults, it is very easy to override a little or a lot which
-ends up giving the developer a lot of flexibility.
-
-Consequently, it should be possible to use CGI::Ex::App with the other
-frameworks such as CGI::Application or CGI::Prototype.  For these you
-could simple let each "runmode" call the run_step hook of CGI::Ex::App
-and you will instantly get all of the common process flow for free.
 
 =head1 AVAILABLE METHODS / HOOKS
 
@@ -539,6 +798,28 @@ up the username.  See the get_valid_auth method.
          my ($self, $user) = @_;
          return lc $user;
      }
+
+=item clear_app (method)
+
+If the same CGI::Ex::App based object is used to run multiple
+navigate sessions, the clear_app method should be called which
+will attempt to clear as much session information as it can.
+The following items will be cleared:
+
+    cgix
+    vob
+    form
+    cookies
+    stash
+    path
+    path_i
+    history
+    __morph_lineage_start_index
+    __morph_lineage
+    hash_errors
+    hash_fill
+    hash_swap
+    hash_common
 
 =item current_step (method)
 
@@ -1220,6 +1501,70 @@ If navigation runs out of steps to run, the default step found in
 default_step will be run.  This is what allows for us to default
 to the "main" step for many applications.
 
+=item path_info_map (hook)
+
+Used to map path_info parts to form variables.  Similar to the
+path_info_map_base method.  See the path_info_map_base method
+for a discussion of how to use this hook.
+
+=item path_info_map_base (method)
+
+Called during the default path method.  It is used to custom map portions
+of $ENV{'PATH_INFO'} to form values.  If should return an arrayref of
+arrayrefs where each child arrayref contains a regex qr with match parens
+as the first element of the array.  Subsequent elements of the array are
+the key names to store the corresponding matched value from the regex under.
+The outer arrayref is iterated until it one of child arrayrefs matches
+against $ENV{'PATH_INFO'}.  The matched values are only added to the form if
+there is not already a defined value for that key in the form.
+
+The default value returned by this method looks something like the following:
+
+   sub path_info_map_base {
+       return [[qr{^/(\w+)}, $self->step_key]];
+   }
+
+This example would map the following PATH_INFO string as follows:
+
+   /my_step
+
+   # $self->form->{'step'} now equals "my_step"
+
+The following is another example:
+
+   sub path_info_map_base {
+       return [
+           [qr{^/([^/]+)/(\w+)}, 'username', $self->step_key],
+           [qr{^/(\w+)}, $self->step_key],
+       ];
+   }
+
+   # the PATH_INFO /my_step
+   # still results in
+   # $self->form->{'step'} now equals "my_step"
+
+   # but with the PATH_INFO /my_user/my_step
+   # $self->form->{'step'} now equals "my_step"
+   # and $self->form->{'username'} equals "my_user"
+
+In most cases there is not a need to override the path_info_map_base
+method, but rather override the path_info_map hook for a particular step.
+When the step is being run, just before the run_step hook is called, the
+path_info_map hook is called.  The path_info_map hook is similar to
+the path_info_map_base method, but is used to allow step level manipulation
+of form based on elements in the $ENV{'PATH_INFO'}.
+
+   sub my_step_path_info_map {
+       return [[qr{^/my_step/(\w+)$}, 'username']];
+   }
+
+   # the PATH_INFO /my_step/my_user
+   # results in
+   # $self->form->{'step'} equal to "my_step" because of default path_info_map_base
+   # and $self->form->{'username'} equals "my_user" because of my_step_path_info_map
+
+The section on mapping URIs to steps has additional examples.
+
 =item post_loop (method)
 
 Ran after all of the steps in the loop have been processed (if
@@ -1566,18 +1911,82 @@ used to abort early before the get_pass_by_user hook is called.
 
 =back
 
-=head1 OTHER APPLICATION MODULES
+=head1 HOW DO I SET COOKIES, REDIRECT, ETC
+
+Often in your program you will want to set cookies or bounce to a differnt URL.
+This can be done using either the builtin CGI::Ex object or the built in
+CGI object.  It is suggested that you only use the CGI::Ex methods as it will
+automatically send headers and method calls under cgi, mod_perl1, or mod_perl2.
+The following shows how to do basic items using the CGI::Ex object returned by
+the ->cgix method.
+
+=over 4
+
+=item printing content-type headers
+
+    ### CGI::Ex::App prints headers for you,
+    ### but if you are printing custom types, you can send your own
+    $self->cgix->print_content_type;
+    # SAME AS
+    # $self->cgix->print_content_type('text/html');
+
+=item setting a cookie
+
+    $self->cgix->set_cookie({
+        -name    => "my_key",
+        -value   => 'Some Value',
+        -expires => '1y',
+        -path    => '/',
+    });
+
+=item redirecting to another URL
+
+    $self->cgix->location_bounce("http://somewhereelse.com");
+    $self->exit_nav_loop; # normally should do this to long jump out of navigation
+
+=item making a QUERY_STRING
+
+    my $data  = {foo => "bar", one => "two or three"};
+    my $query = $self->cgix->make_form($data);
+    # $query now equals "foo=bar&one=two%20or%20three"
+
+=item getting form parameters
+
+    my $form = $self->form;
+
+In this example $form would now contain a hashref of all POST and GET parameters
+passed to the server.  The form method calls $self->cgix->get_form
+which in turn uses CGI->param to parse values.  Fields with multiple passed
+values will be in the form of an arrayref.
+
+=item getting cookies
+
+    my $cookies = $self->cookies;
+
+In this example $cookies would be a hashref of all passed in cookies.  The
+cookies method calls $self->cgix->get_cookies which in turn uses CGI->cookie
+to parse values.
+
+=back
+
+See the CGI::Ex and CGI documentation for more information.
+
+=head1 COMPARISON TO OTHER APPLICATION MODULES
 
 The concepts used in CGI::Ex::App are not novel or unique.  However, they
 are all commonly used and very useful.  All application builders were
 built because somebody observed that there are common design patterns
 in CGI building.  CGI::Ex::App differs in that it has found more common design
-patterns of CGI's than some and tries to get in the way less than others.
+patterns of CGI's than other application builders and tries to get in the way
+less than others.
 
 CGI::Ex::App is intended to be sub classed, and sub sub classed, and each step
 can choose to be sub classed or not.  CGI::Ex::App tries to remain simple
 while still providing "more than one way to do it."  It also tries to avoid
 making any sub classes have to call ->SUPER:: (although that is fine too).
+
+And if what you are doing on a particular is far too complicated or custom for
+what CGI::Ex::App provides, CGI::Ex::App makes it trivial to override all behavior.
 
 There are certainly other modules for building CGI applications.  The
 following is a short list of other modules and how CGI::Ex::App is
@@ -1605,6 +2014,9 @@ CGI::Ex::App is different in that it:
       which is only a dispatch.
   * Support for easily jumping around in navigation steps.
   * Support for storing some steps in another package.
+  * Integrated authentication
+  * Integrated form filling
+  * Integrated PATH_INFO mapping
 
 CGI::Ex::App and CGI::Application are similar in that they take care
 of handling headers and they allow for calling other "runmodes" from
@@ -1624,13 +2036,13 @@ CGI::Prototype is that it is extremely short (very very short).  The
 system (CGI::Ex::App uses CGI::Ex::Template which is TT compatible).
 CGI::Ex::App is differrent in that it:
 
-  * Offers integrated data validation.
-      CGI::Application has had custom addons created that
-      add some of this functionality.  CGI::Ex::App has the benefit
-      that once validation is created,
   * Offers more hooks into the various phases of each step.
   * Support for easily jumping around in navigation steps.
   * Support for storing only some steps in another package.
+  * Integrated data validation
+  * Integrated authentication
+  * Integrated form filling
+  * Integrated PATH_INFO mapping
 
 =back
 
@@ -2187,6 +2599,9 @@ See the require_auth, get_valid_auth, and auth_args methods for more information
 Also see the L<CGI::Ex::Auth> perldoc.
 
 =head1 THANKS
+
+The following corporation and individuals contributed in some part to
+the original versions.
 
     Bizhosting.com - giving a problem that fit basic design patterns.
 
