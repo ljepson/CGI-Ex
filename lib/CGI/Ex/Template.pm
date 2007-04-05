@@ -39,7 +39,7 @@ use vars qw($VERSION
             );
 
 BEGIN {
-    $VERSION = '2.08';
+    $VERSION = '2.09';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -59,17 +59,18 @@ BEGIN {
     };
 
     $SCALAR_OPS = {
-        '0'      => sub { shift },
+        '0'      => sub { $_[0] },
         as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
-        defined  => sub { 1 },
+        defined  => sub { defined $_[0] ? 1 : '' },
         indent   => \&vmethod_indent,
         int      => sub { local $^W; int $_[0] },
         fmt      => \&vmethod_as_scalar,
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
         html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        item     => sub { $_[0] },
         lcfirst  => sub { lcfirst $_[0] },
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
         list     => sub { [$_[0]] },
@@ -81,11 +82,11 @@ BEGIN {
         remove   => sub { vmethod_replace(shift, shift, '', 1) },
         repeat   => \&vmethod_repeat,
         replace  => \&vmethod_replace,
-        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return scalar $str =~ /$pat/ },
+        search   => sub { my ($str, $pat) = @_; return $str if ! defined $str || ! defined $pat; return $str =~ /$pat/ },
         size     => sub { 1 },
         split    => \&vmethod_split,
         stderr   => sub { print STDERR $_[0]; '' },
-        substr   => sub { my ($str, $i, $len) = @_; defined($len) ? substr($str, $i, $len) : substr($str, $i) },
+        substr   => \&vmethod_substr,
         trim     => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; $_ },
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
@@ -101,46 +102,51 @@ BEGIN {
 
     $LIST_OPS = {
         as      => \&vmethod_as_list,
+        defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
         fmt     => \&vmethod_as_list,
-        grep    => sub { my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
-        hash    => sub { local $^W; my ($list, $i) = @_; defined($i) ? {map {$i++ => $_} @$list} : {@$list} },
+        grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
+        hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
+        import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
+        item    => sub { $_[0]->[ $_[1] || 0 ] },
         join    => sub { my ($ref, $join) = @_; $join = ' ' if ! defined $join; local $^W; return join $join, @$ref },
         last    => sub { my ($ref, $i) = @_; return $ref->[-1] if ! $i; return [@{$ref}[-$i .. -1]]},
         list    => sub { $_[0] },
-        max     => sub { $#{ $_[0] } },
+        max     => sub { local $^W; $#{ $_[0] } },
         merge   => sub { my $ref = shift; return [ @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_ ] },
         new     => sub { local $^W; return [@_] },
+        null    => sub { '' },
         nsort   => \&vmethod_nsort,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
         random  => sub { my $ref = shift; $ref->[ rand @$ref ] },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift  @{ $_[0] } },
-        size    => sub { scalar @{ $_[0] } },
+        size    => sub { local $^W; scalar @{ $_[0] } },
         slice   => sub { my ($ref, $a, $b) = @_; $a ||= 0; $b = $#$ref if ! defined $b; return [@{$ref}[$a .. $b]] },
         sort    => \&vmethod_sort,
         splice  => \&vmethod_splice,
-        unique  => sub { my %u; return [ grep { ! $u{$_} ++ } @{ $_[0] } ] },
+        unique  => sub { my %u; return [ grep { ! $u{$_}++ } @{ $_[0] } ] },
         unshift => sub { my $ref = shift; unshift @$ref, @_; return '' },
     };
 
     $HASH_OPS = {
         as      => \&vmethod_as_hash,
-        defined => sub { return '' if ! defined $_[1]; defined $_[0]->{ $_[1] } },
-        delete  => sub { return '' if ! defined $_[1]; delete  $_[0]->{ $_[1] } },
+        defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
+        delete  => sub { my $h = shift; my @v = delete @{ $h }{map {defined($_) ? $_ : ''} @_}; @_ == 1 ? $v[0] : \@v },
         each    => sub { [%{ $_[0] }] },
-        exists  => sub { return '' if ! defined $_[1]; exists $_[0]->{ $_[1] } },
+        exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
         fmt     => \&vmethod_as_hash,
         hash    => sub { $_[0] },
-        import  => sub { my ($a, $b) = @_; return '' if ref($b) ne 'HASH'; @{$a}{keys %$b} = values %$b; '' },
-        item    => sub { my ($h, $k) = @_; return '' if ! defined $k || $k =~ $QR_PRIVATE; $h->{$k} },
+        import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
+        item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
         items   => sub { [ %{ $_[0] } ] },
         keys    => sub { [keys %{ $_[0] }] },
-        list    => sub { [$_[0]] },
+        list    => \&vmethod_list_hash,
         new     => sub { local $^W; return (@_ == 1 && ref $_[-1] eq 'HASH') ? $_[-1] : {@_} },
-        nsort   => sub { my $ref = shift; [sort {$ref->{$a}    <=> $ref->{$b}   } keys %$ref] },
-        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } keys %{ $_[0] } ] },
+        null    => sub { '' },
+        nsort   => sub { my $ref = shift; [sort {   $ref->{$a} <=>    $ref->{$b}} keys %$ref] },
+        pairs   => sub { [map { {key => $_, value => $_[0]->{$_}} } sort keys %{ $_[0] } ] },
         size    => sub { scalar keys %{ $_[0] } },
         sort    => sub { my $ref = shift; [sort {lc $ref->{$a} cmp lc $ref->{$b}} keys %$ref] },
         values  => sub { [values %{ $_[0] }] },
@@ -2910,11 +2916,18 @@ sub vmethod_format {
     }
 }
 
+sub vmethod_list_hash {
+    my ($hash, $what) = @_;
+    $what = 'pairs' if ! $what || $what !~ /^(keys|values|each|pairs)$/;
+    return $HASH_OPS->{$what}->($hash);
+}
+
+
 sub vmethod_match {
     my ($str, $pat, $global) = @_;
     return [] if ! defined $str || ! defined $pat;
     my @res = $global ? ($str =~ /$pat/g) : ($str =~ /$pat/);
-    return (@res >= 2) ? \@res : (@res == 1) ? $res[0] : '';
+    return @res ? \@res : '';
 }
 
 sub vmethod_nsort {
@@ -2928,7 +2941,7 @@ sub vmethod_nsort {
 
 sub vmethod_repeat {
     my ($str, $n, $join) = @_;
-    return if ! length $str;
+    return '' if ! defined $str || ! length $str;
     $n = 1 if ! defined($n) || ! length $n;
     $join = '' if ! defined $join;
     return join $join, ($str) x $n;
@@ -2973,15 +2986,27 @@ sub vmethod_splice {
     @replace = @{ $replace[0] } if @replace == 1 && ref $replace[0] eq 'ARRAY';
     if (defined $len) {
         return [splice @$ref, $i || 0, $len, @replace];
+    } elsif (defined $i) {
+        return [splice @$ref, $i];
     } else {
-        return [splice @$ref, $i || 0];
+        return [splice @$ref];
     }
 }
 
 sub vmethod_split {
-    my ($str, $pat, @args) = @_;
+    my ($str, $pat, $lim) = @_;
     $str = '' if ! defined $str;
-    return defined $pat ? [split $pat, $str, @args] : [split ' ', $str, @args];
+    if (defined $lim) { return defined $pat ? [split $pat, $str, $lim] : [split ' ', $str, $lim] }
+    else              { return defined $pat ? [split $pat, $str      ] : [split ' ', $str      ] }
+}
+
+sub vmethod_substr {
+    my ($str, $i, $len, $replace) = @_;
+    $i ||= 0;
+    return substr($str, $i)       if ! defined $len;
+    return substr($str, $i, $len) if ! defined $replace;
+    substr($str, $i, $len, $replace);
+    return $str;
 }
 
 sub vmethod_uri {
