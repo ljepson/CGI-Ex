@@ -18,19 +18,17 @@ sub validate { scalar CGI::Ex::Validate::validate(@_) }
 
 ###----------------------------------------------------------------###
 
-$v = [
-{
+$v = {
   foo => {
     max_len => 10,
     replace => 's/[^\d]//g',
   },
-},
-];
+};
 
 $e = validate({
   foo => '123-456-7890',
 }, $v);
-ok(! $e);
+ok(! $e, "Didn't get error");
 
 
 my $form = {
@@ -46,7 +44,7 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok(! $e && $form->{key1} eq 'Bunch of characters');
+ok(! $e && $form->{key1} eq 'Bunch of characters', "No error and key1 updated");
 
 $v = {
   key2 => {
@@ -55,8 +53,7 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok(! $e && $form->{key2} eq '(123) 456-7890');
-
+ok(! $e && $form->{key2} eq '(123) 456-7890', "No error and phone updated");
 
 $v = {
   key2 => {
@@ -66,5 +63,5 @@ $v = {
 };
 
 $e = validate($form, $v);
-ok($e && $form->{key2} eq '');
+ok($e && $form->{key2} eq '', "Error with all replaced");
 

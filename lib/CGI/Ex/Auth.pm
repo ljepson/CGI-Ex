@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.09';
+$VERSION = '2.10';
 
 ###----------------------------------------------------------------###
 
@@ -484,7 +484,8 @@ sub generate_token {
     if (   (defined($data->{'use_plaintext'}) ?  $data->{'use_plaintext'} : $self->use_plaintext) # ->use_plaintext is true if ->use_crypt is
         || (defined($data->{'use_crypt'})     && $data->{'use_crypt'})
         || (defined($data->{'type'})          && $data->{'type'} eq 'crypt')) {
-        $token = $data->{'user'} .'/'. $data->{'real_pass'};
+        my $pass = defined($data->{'test_pass'}) ? $data->{'test_pass'} : $data->{'real_pass'};
+        $token = $data->{'user'} .'/'. $pass;
 
     ### all other types go to cram - secure_hash_cram, cram, plaintext and md5
     } else {

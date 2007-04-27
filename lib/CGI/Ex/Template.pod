@@ -43,6 +43,12 @@ in sync at a language level.  There already has been, and it is expected that
 there will continue to be code sharing between the two projects.  (Acutally
 I will try and keep applicable fixes in sync with TT).
 
+CGI::Ex::Template uses a recursive regex based grammar (early versions
+before the 2.10 release did not).  This allows for the embedding of opening
+and closing tags inside other tags (as in [% a = "[% 1 + 2 %]" ;  a|eval %]).
+The individual methods such as parse_expr and play_expr may be used by external
+applications to add TT style variable parsing to other applications.
+
 Most of the standard Template::Toolkit documentation covering directives,
 variables, configuration, plugins, filters, syntax, and vmethods should
 apply to CET just fine (This pod tries to explain everything - but there is
@@ -56,10 +62,10 @@ samples/benchmark/bench_template.pl was used to obtain sample numbers.
 In general the following statements are true:
 
     If you load a new Template object each time and pass a filename, CET
-    is around 4 times faster.
+    is around 3.5 times faster.
 
     If you load a new Template object and pass a string ref, CET
-    is around 3.5 times faster.
+    is around 3 times faster.
 
     If you load a new Template object and use CACHE_EXT, CET
     is around 1.5 times faster.
@@ -68,16 +74,15 @@ In general the following statements are true:
     then CET is 50% faster.
 
     If you use Template::Stash::XS with a cached in memory template,
-    then CET is about as fast.
-
-    Using TT with a compiled-in-memory template is only 33%
-    faster than CET with a new object compiling each time.
+    then CET is about as fast.  But if you use CGI::Ex::Template::XS,
+    the CETX is faster still (about twice as fast as CET).
 
 It is pretty hard to beat the speed of XS stash with compiled in
 memory templates.  Many systems don't have access to those so
 CET may make more sense.  Hopefully as TT is revised, many of the CET
 speed advantages can be incorporated so that the core TT is just as
-fast or faster.
+fast or faster.  This was last updated at version 2.10 of CET and
+2.18 of TT.
 
 So should you use CGI::Ex::Template ?  Well, try it out.  It may
 give you no visible improvement.  Or it could.
@@ -216,9 +221,9 @@ TT3 are marked with (TT3).
 
     [% (a ~ b).length %]
 
-    [% "hi".repeat(3) %]
+    [% "hi".repeat(3) %] # = hihihi
 
-    [% {a => b}.size %]
+    [% {a => b}.size %] # = 1
 
 =item The "${" and "}" variable interpolators can contain expressions,
 not just variables.
@@ -229,6 +234,10 @@ not just variables.
 
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
+
+=item Tags can be nested.
+
+    [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
 
 =item Arrays can be accessed with non-integer numbers.
 
@@ -366,11 +375,20 @@ Used for Data::Dumpering the passed variable or expression.
 
 =item CET does not generate Perl code.
 
-It generates an "opcode" tree.
+It generates an "opcode" tree.  The opcode tree is an arrayref
+of scalars and array refs nested as deeply as possible.  This "simple"
+structure could be shared TT implementations in other languages
+via JSON or YAML.
 
 =item CET uses storable for its compiled templates.
 
 If EVAL_PERL is off, CET will not eval_string on ANY piece of information.
+
+=item There is eval_filter and MACRO recursion protection
+
+You can control the nested nature of eval_filter and MACRO
+recursion using the MAX_EVAL_RECURSE and MAX_MACRO_RECURSE
+configuration items.
 
 =item There is no context.
 
@@ -392,15 +410,9 @@ CET uses the load_parsed_tree method to get and cache templates.
 
 =item There is no grammar.
 
-CET has its own built in recursive grammar system.
+CET has its own built-in recursive regex based grammar system.
 
 =item There is no VIEW directive.
-
-
-=item There are no references.
-
-There were in initial beta tests, but it was decided to remove the little used feature which
-took a length of code to implement.
 
 =item The DEBUG directive is more limited.
 
@@ -408,15 +420,6 @@ It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
 =item When debug dirs is on, directives on different lines separated by colons show the line they
 are on rather than a general line range.
-
-=item There is no ANYCASE configuration item.
-
-There was in initial beta tests, but it was dropped in favor of consistent parsing syntax (and
-a minimal amount of speedup).
-
-=item There is no V1DOLLAR configuration item.
-
-This is a TT version 1 compatibility item and is not available in CET.
 
 =back
 
@@ -505,7 +508,7 @@ Would print something like:
 
     CGI::Ex::Template=HASH(0x814dc28)
 
-    $VAR1 = [ \[ '+', '1', '2' ], 0 ];
+    $VAR1 = [ [ undef, '+', '1', '2' ], 0 ];
 
 Each type of data (string, array and hash) have virtual methods
 associated with them.  Virtual methods allow for access to functions
@@ -648,6 +651,10 @@ Returns the string.  No variable interpolation happens.
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
 
+You may also embed the current tags in strings (CET only).
+
+    [% '[% 1 + 2 %]' | eval %]  Prints "3"
+
 =item Double quoted strings.
 
 Returns the string.  Variable interpolation happens.
@@ -660,6 +667,10 @@ Returns the string.  Variable interpolation happens.
     [% "foo".replace('foo','bar') %] Prints "bar".
 
 Note: virtual methods can only be used on literal strings in CET, not in TT.
+
+You may also embed the current tags in strings (CET only).
+
+    [% "[% 1 + 2 %]" | eval %]  Prints "3"
 
 =item Array Constructs.
 
@@ -1652,13 +1663,26 @@ two tags themselves must be supplied.
 
 The named tags are (duplicated from TT):
 
-    template => ['[%',   '%]'],  # default
-    metatext => ['%%',   '%%'],  # Text::MetaText
-    star     => ['[*',   '*]'],  # TT alternate
-    php      => ['<?',   '?>'],  # PHP
-    asp      => ['<%',   '%>'],  # ASP
-    mason    => ['<%',   '>' ],  # HTML::Mason
-    html     => ['<!--', '-->'], # HTML comments
+    asp       => ['<%',     '%>'    ], # ASP
+    default   => ['\[%',    '%\]'   ], # default
+    html      => ['<!--',   '-->'   ], # HTML comments
+    mason     => ['<%',     '>'     ], # HTML::Mason
+    metatext  => ['%%',     '%%'    ], # Text::MetaText
+    php       => ['<\?',    '\?>'   ], # PHP
+    star      => ['\[\*',   '\*\]'  ], # TT alternate
+    template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+
+If custom tags are supplied, by default they are escaped using
+quotemeta.  If a third argument is given and is equal to "unquoted",
+then no quoting takes place on the new tags.
+
+    [% TAGS [<] [>] %]          matches "[<] tag [>]"
+
+    [% TAGS [<] [>] unquoted %] matches "< tag >"
+
+    [% TAGS ** ** %]            matches "** tag **"
+
+    [% TAGS ** ** unquoted %]   Throws an exception.
 
 =item C<THROW>
 
@@ -1830,7 +1854,7 @@ file).
 
 Would print:
 
-    $VAR1 = [ \[ '*', '2', '3' ], 0 ];
+    $VAR1 = [ [ undef, '*', '2', '3' ], 0 ];
 
 See the PLUGIN_BASE, and PLUGINS configuration items.
 
@@ -1981,6 +2005,21 @@ A simple fix is to do any of the following:
 This shouldn't be too much hardship and offers the great return of disambiguating
 virtual method access.
 
+=item C<\>
+
+Unary.  The reference operator.  Not well publicized in TT.  Stores a reference
+to a variable for use later.  Can also be used to "alias" long names.
+
+    [% f = 7 ; foo = \f ; f = 8 ; foo %] => 8
+
+    [% foo = \f.g.h.i.j.k; f.g.h.i.j.k = 7; foo %] => 7
+
+    [% f = "abcd"; foo = \f.replace("ab", "-AB-") ; foo %] => -AB-cd
+
+    [% f = "abcd"; foo = \f.replace("bc") ; foo("-BC-") %] => a-BC-d
+
+    [% f = "abcd"; foo = \f.replace ; foo("cd", "-CD-") %] => ab-CD-
+
 =item C<++ -->
 
 Pre and post increment and decrement.  My be used as either a prefix
@@ -2129,13 +2168,13 @@ Left associative. Lower precedence version of the '&&' operator.
 
 Right associative. Lower precedence version of the '||' operator.
 
-=item C<hash>
+=item C<{}>
 
 This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of a hash until the
 execution of the compiled template.
 
-=item C<array>
+=item C<[]>
 
 This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of an array until the
@@ -2233,13 +2272,13 @@ the TT config documentation.
 
 These variables should be passed to the "new" constructor.
 
-   my $obj = CGI::Ex::Template->new(
-       VARIABLES  => \%hash_of_variables,
-       AUTO_RESET => 0,
-       TRIM       => 1,
-       POST_CHOMP => "=",
-       PRE_CHOMP  => "-",
-   );
+    my $obj = CGI::Ex::Template->new(
+        VARIABLES  => \%hash_of_variables,
+        AUTO_RESET => 0,
+        TRIM       => 1,
+        POST_CHOMP => "=",
+        PRE_CHOMP  => "-",
+    );
 
 
 =over 4
@@ -2247,6 +2286,12 @@ These variables should be passed to the "new" constructor.
 =item ABSOLUTE
 
 Boolean.  Default false.  Are absolute paths allowed for included files.
+
+=item ANYCASE
+
+Allow directive matching to be case insensitive.
+
+    [% get 23 %] prints 23 with ANYCASE => 1
 
 =item AUTO_RESET
 
@@ -2256,10 +2301,10 @@ Boolean.  Default 1.  Clear blocks that were set during the process method.
 
 A hashref of blocks that can be used by the process method.
 
-   BLOCKS => {
-       block_1 => sub { ... }, # coderef that returns a block
-       block_2 => 'A String',  # simple string
-   },
+    BLOCKS => {
+        block_1 => sub { ... }, # coderef that returns a block
+        block_2 => 'A String',  # simple string
+    },
 
 Note that a Template::Document cannot be supplied as a value (TT
 supports this).  However, it is possible to supply a value that is
@@ -2398,12 +2443,25 @@ with the appropriate values from the variable cache (if INTERPOLATE is on).
 
     [% IF 1 %]The variable $variable had a value ${var.value}[% END %]
 
-
 =item LOAD_PERL
 
 Indicates if the USE directive can fall back and try and load a perl module
 if the indicated module was not found in the PLUGIN_BASE path.  See the
 USE directive.
+
+=item MAX_EVAL_RECURSE (CET only)
+
+Will use $CGI::Ex::Template::MAX_EVAL_RECURSE if not present.  Default is 50.
+Prevents runaway on the following:
+
+    [% f = "[% f|eval %]" %][% f|eval %]
+
+=item MAX_MACRO_RECURSE (CET only)
+
+Will use $CGI::Ex::Template::MAX_MACRO_RECURSE if not present.  Default is 50.
+Prevents runaway on the following:
+
+    [% MACRO f BLOCK %][% f %][% END %][% f %]
 
 =item NAMESPACE
 
@@ -2535,6 +2593,23 @@ rather than in embedded expressions (such as [% a || b || c %]).
 
 You can also sub class the module and override the undefined_get method.
 
+=item V1DOLLAR
+
+This allows for some compatibility with TT1 templates.  The only real
+behavior change is that [% $foo %] becomes the same as [% foo %].  The
+following is a basic table of changes invoked by using V1DOLLAR.
+
+   With V1DOLLAR        Equivalent Without V1DOLLAR (Normal default)
+   "[% foo %]"          "[% foo %]"
+   "[% $foo %]"         "[% foo %]"
+   "[% ${foo} %]"       "[% ${foo} %]"
+   "[% foo.$bar %]"     "[% foo.bar %]"
+   "[% ${foo.bar} %]"   "[% ${foo.bar} %]"
+   "[% ${foo.$bar} %]"  "[% ${foo.bar} %]"
+   "Text: $foo"         "Text: $foo"
+   "Text: ${foo}"       "Text: ${foo}"
+   "Text: ${$foo}"      "Text: ${foo}"
+
 =item VARIABLES
 
 A hashref of variables to initialize the template stash with.  These
@@ -2549,11 +2624,6 @@ See the section on VARIABLES for the types of information that can be passed in.
 
 =over 4
 
-=item ANYCASE
-
-This will not be supported.  You will have to use the full case directive names.
-(It was in the beta code but was removed prior to release).
-
 =item WRAPPER
 
 This will be supported - just not done yet.
@@ -2561,10 +2631,6 @@ This will be supported - just not done yet.
 =item ERROR
 
 This will be supported - just not done yet.
-
-=item V1DOLLAR
-
-This will not be supported.
 
 =item LOAD_TEMPLATES
 
@@ -2655,28 +2721,29 @@ The following table shows a variable or expression and the corresponding parsed 
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
     2.34               2.34
     "one"              "one"
-    "one"|length       [ \"one", 0, '|', 'length', 0 ]
-    "one $a two"       [ \ [ '~', 'one ', ['a', 0], ' two' ], 0 ]
-    [0, 1, 2]          [ \ [ 'array', 0, 1, 2 ], 0 ]
-    [0, 1, 2].size     [ \ [ 'array', 0, 1, 2 ], 0, '.', 'size', 0 ]
-    ['a', a, $a ]      [ \ [ 'array', 'a', ['a', 0], [['a', 0], 0] ], 0]
-    {a  => 'b'}        [ \ [ 'hash',  'a', 'b' ], 0 ]
-    {a  => 'b'}.size   [ \ [ 'hash',  'a', 'b' ], 0, '.', 'size', 0 ]
-    {$a => b}          [ \ [ 'hash',  ['a', 0], ['b', 0] ], 0 ]
-    1 + 2              [ \ [ '+', 1, 2 ], 0]
-    a + b              [ \ [ '+', ['a', 0], ['b', 0] ], 0 ]
-    a * (b + c)        [ \ [ '*', ['a', 0], [ \ ['+', ['b', 0], ['c', 0]], 0 ]], 0 ]
-    (a + b)            [ \ [ '+', ['a', 0], ['b', 0] ]], 0 ]
-    (a + b) * c        [ \ [ '*', [ \ [ '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
-    a ? b : c          [ \ [ '?', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
-    a || b || c        [ \ [ '||', ['a', 0], [ \ [ '||', ['b', 0], ['c', 0] ], 0 ] ], 0 ]
-    ! a                [ \ [ '!', ['a', 0] ], 0 ]
+    "one"|length       [ [ undef, '~', "one" ], 0, '|', 'length', 0 ]
+    "one $a two"       [ [ undef, '~', 'one ', ['a', 0], ' two' ], 0 ]
+    [0, 1, 2]          [ [ undef, '[]', 0, 1, 2 ], 0 ]
+    [0, 1, 2].size     [ [ undef, '[]', 0, 1, 2 ], 0, '.', 'size', 0 ]
+    ['a', a, $a ]      [ [ undef, '[]', 'a', ['a', 0], [['a', 0], 0] ], 0]
+    {a  => 'b'}        [ [ undef, '{}', 'a', 'b' ], 0 ]
+    {a  => 'b'}.size   [ [ undef, '{}', 'a', 'b' ], 0, '.', 'size', 0 ]
+    {$a => b}          [ [ undef, '{}', ['a', 0], ['b', 0] ], 0 ]
+    1 + 2              [ [ undef, '+', 1, 2 ], 0]
+    a + b              [ [ undef, '+', ['a', 0], ['b', 0] ], 0 ]
+    a * (b + c)        [ [ undef, '*', ['a', 0], [ [undef, '+', ['b', 0], ['c', 0]], 0 ]], 0 ]
+    (a + b)            [ [ undef, '+', ['a', 0], ['b', 0] ]], 0 ]
+    (a + b) * c        [ [ undef, '*', [ [undef, '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
+    a ? b : c          [ [ undef, '?', ['a', 0], ['b', 0], ['c', 0] ], 0 ]
+    a || b || c        [ [ undef, '||', ['a', 0], [ [undef, '||', ['b', 0], ['c', 0] ], 0 ] ], 0 ]
+    ! a                [ [ undef, '!', ['a', 0] ], 0 ]
 
 Some notes on the parsing.
 
     Operators are parsed as part of the variable and become part of the variable tree.
 
-    Operators are stored in the variable tree using a reference to the arrayref - which
+    Operators are stored in the variable tree using an operator identity array which
+    contains undef as the first value, the operator, and the operator arguments.  This
     allows for quickly descending the parsed variable tree and determining that the next
     node is an operator.
 
@@ -2704,11 +2771,13 @@ may be re-implemented by subclasses of CET.
 
 =item C<dump_parse>
 
-This method allows for returning a Data::Dumper dump of a parsed template.  It is mainly used for testing.
+This method allows for returning a Data::Dumper dump of a parsed
+template.  It is mainly used for testing.
 
 =item C<dump_parse_expr>
 
-This method allows for returning a Data::Dumper dump of a parsed variable.  It is mainly used for testing.
+This method allows for returning a Data::Dumper dump of a parsed
+variable.  It is mainly used for testing.
 
 =item C<exception>
 
@@ -2721,9 +2790,11 @@ Executes a parsed tree (returned from parse_tree)
 
 =item C<play_expr>
 
-Turns a variable identity array into the parsed variable.  This
-method is also responsible for playing operators and running virtual methods
-and filters.  The method could more accurately be called play_expression.
+Play the parsed expression.  Turns a variable identity array into the
+parsed variable.  This method is also responsible for playing
+operators and running virtual methods and filters.  The variable
+identity array may also contain literal values, or operator identity
+arrays.
 
 =item C<include_filename>
 
@@ -2843,7 +2914,11 @@ Methods by these names are used by execute_tree to execute the parsed tree.
 
 =item C<play_operator>
 
-Used to execute any found operators
+Used to execute any found operators.  The single argument is
+an operator identy returned by the parse_expr method (if the expression
+contained an operator).  Normally you would just call play_expr
+instead and it will call play_operator if the structure
+contains an operator.
 
 =item C<_process>
 
