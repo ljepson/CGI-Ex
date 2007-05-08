@@ -1,5 +1,8 @@
 package CGI::Ex::Template;
 
+#STAT_TTL
+#memory leak in USE
+
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -28,7 +31,6 @@ use vars qw($VERSION
             $QR_COMMENTS
             $QR_FILENAME
             $QR_NUM
-            $QR_AQ_NOTDOT
             $QR_AQ_SPACE
             $QR_PRIVATE
 
@@ -37,10 +39,13 @@ use vars qw($VERSION
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
+
+            @CONFIG_COMPILETIME
+            @CONFIG_RUNTIME
             );
 
 BEGIN {
-    $VERSION = '2.10';
+    $VERSION = '2.11';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
@@ -58,21 +63,22 @@ BEGIN {
         metatext  => ['%%',     '%%'    ], # Text::MetaText
         php       => ['<\?',    '\?>'   ], # PHP
         star      => ['\[\*',   '\*\]'  ], # TT alternate
+        template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
         template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+        tt2       => ['\[%',    '%\]'   ], # TT2
     };
 
     $SCALAR_OPS = {
         '0'      => sub { $_[0] },
-        as       => \&vmethod_as_scalar,
         chunk    => \&vmethod_chunk,
         collapse => sub { local $_ = $_[0]; s/^\s+//; s/\s+$//; s/\s+/ /g; $_ },
         defined  => sub { defined $_[0] ? 1 : '' },
         indent   => \&vmethod_indent,
         int      => sub { local $^W; int $_[0] },
-        fmt      => \&vmethod_as_scalar,
+        fmt      => \&vmethod_fmt_scalar,
         'format' => \&vmethod_format,
         hash     => sub { {value => $_[0]} },
-        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; $_ },
+        html     => sub { local $_ = $_[0]; s/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g; s/\"/&quot;/g; s/\'/&apos;/g; $_ },
         item     => sub { $_[0] },
         lcfirst  => sub { lcfirst $_[0] },
         length   => sub { defined($_[0]) ? length($_[0]) : 0 },
@@ -94,6 +100,7 @@ BEGIN {
         ucfirst  => sub { ucfirst $_[0] },
         upper    => sub { uc $_[0] },
         uri      => \&vmethod_uri,
+        url      => \&vmethod_url,
     };
 
     $FILTER_OPS = { # generally - non-dynamic filters belong in scalar ops
@@ -104,10 +111,9 @@ BEGIN {
     };
 
     $LIST_OPS = {
-        as      => \&vmethod_as_list,
         defined => sub { return 1 if @_ == 1; defined $_[0]->[ defined($_[1]) ? $_[1] : 0 ] },
         first   => sub { my ($ref, $i) = @_; return $ref->[0] if ! $i; return [@{$ref}[0 .. $i - 1]]},
-        fmt     => \&vmethod_as_list,
+        fmt     => \&vmethod_fmt_list,
         grep    => sub { local $^W; my ($ref, $pat) = @_; [grep {/$pat/} @$ref] },
         hash    => sub { local $^W; my $list = shift; return {@$list} if ! @_; my $i = shift || 0; return {map {$i++ => $_} @$list} },
         import  => sub { my $ref = shift; push @$ref, grep {defined} map {ref eq 'ARRAY' ? @$_ : undef} @_; '' },
@@ -120,9 +126,9 @@ BEGIN {
         new     => sub { local $^W; return [@_] },
         null    => sub { '' },
         nsort   => \&vmethod_nsort,
+        pick    => \&vmethod_pick,
         pop     => sub { pop @{ $_[0] } },
         push    => sub { my $ref = shift; push @$ref, @_; return '' },
-        random  => sub { my $ref = shift; $ref->[ rand @$ref ] },
         reverse => sub { [ reverse @{ $_[0] } ] },
         shift   => sub { shift  @{ $_[0] } },
         size    => sub { local $^W; scalar @{ $_[0] } },
@@ -134,12 +140,11 @@ BEGIN {
     };
 
     $HASH_OPS = {
-        as      => \&vmethod_as_hash,
         defined => sub { return 1 if @_ == 1; defined $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        delete  => sub { my $h = shift; my @v = delete @{ $h }{map {defined($_) ? $_ : ''} @_}; @_ == 1 ? $v[0] : \@v },
+        delete  => sub { my $h = shift; delete @{ $h }{map {defined($_) ? $_ : ''} @_}; '' },
         each    => sub { [%{ $_[0] }] },
         exists  => sub { exists $_[0]->{ defined($_[1]) ? $_[1] : '' } },
-        fmt     => \&vmethod_as_hash,
+        fmt     => \&vmethod_fmt_hash,
         hash    => sub { $_[0] },
         import  => sub { my ($a, $b) = @_; @{$a}{keys %$b} = values %$b if ref($b) eq 'HASH'; '' },
         item    => sub { my ($h, $k) = @_; $k = '' if ! defined $k; $k =~ $QR_PRIVATE ? undef : $h->{$k} },
@@ -175,6 +180,7 @@ BEGIN {
         CATCH   => [\&parse_CATCH,   undef,           0,       0,       {TRY => 1, CATCH => 1}],
         CLEAR   => [sub {},          \&play_CLEAR],
         '#'     => [sub {},          sub {}],
+        CONFIG  => [\&parse_CONFIG,  \&play_CONFIG],
         DEBUG   => [\&parse_DEBUG,   \&play_DEBUG],
         DEFAULT => [\&parse_DEFAULT, \&play_DEFAULT],
         DUMP    => [\&parse_DUMP,    \&play_DUMP],
@@ -206,7 +212,8 @@ BEGIN {
         TRY     => [sub {},          \&play_TRY,      1],
         UNLESS  => [\&parse_UNLESS,  \&play_UNLESS,   1,       1],
         USE     => [\&parse_USE,     \&play_USE],
-        WHILE   => [\&parse_IF,      \&play_WHILE,    1,       1],
+        VIEW    => [\&parse_VIEW,    \&play_VIEW,     1],
+        WHILE   => [\&parse_WHILE,   \&play_WHILE,    1,       1],
         WRAPPER => [\&parse_WRAPPER, \&play_WRAPPER,  1,       1],
         #name       #parse_sub       #play_sub        #block   #postdir #continue #move_to_front
     };
@@ -254,8 +261,9 @@ BEGIN {
         ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
         ['left',    45,        ['and', 'AND'],      undef                                       ],
         ['right',   40,        ['or', 'OR'],        undef                                       ],
-        ['',         0,        ['{}'],              undef                                       ],
-        ['',         0,        ['[]'],              undef                                       ],
+#        ['',         0,        ['{}'],              undef                                       ],
+#        ['',         0,        ['[]'],              undef                                       ],
+#        ['',         0,        ['qr'],              undef                                       ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -281,14 +289,16 @@ BEGIN {
 
     $QR_DIRECTIVE = '( [a-zA-Z]+\b | \| )';
     $QR_COMMENTS  = '(?-s: \# .* \s*)*';
-    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\-\.]+ (?:/[\w\-\.]+)*';
+    $QR_FILENAME  = '([a-zA-Z]]:/|/)? [\w\.][\w\-\.]* (?:/[\w\-\.]+)*';
     $QR_NUM       = '(?:\d*\.\d+ | \d+) (?: [eE][+-]\d+ )?';
-    $QR_AQ_NOTDOT = "(?! \\s* $QR_COMMENTS \\.)";
-    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=[;+]) )'; # the + comes into play on filenames
+    $QR_AQ_SPACE  = '(?: \\s+ | \$ | (?=;) )';
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
     $EXTRA_COMPILE_EXT = '.sto2';
+
+    @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
+    @CONFIG_RUNTIME     = qw(DUMP);
 
     eval {require Scalar::Util};
 };
@@ -328,8 +338,14 @@ sub _process {
     ### parse and execute
     my $doc;
     eval {
+        ### handed us a precompiled document
+        if (ref($file) eq 'HASH' && $file->{'_tree'}) {
+            $doc = $file;
+
         ### load the document
-        $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+        } else {
+            $doc = $self->load_parsed_tree($file) || $self->throw('undef', "Zero length content");;
+        }
 
         ### prevent recursion
         $self->throw('file', "recursion into '$doc->{name}'")
@@ -340,18 +356,18 @@ sub _process {
         if (! @{ $doc->{'_tree'} }) { # no tags found - just return the content
             $$out_ref = ${ $doc->{'_content'} };
         } else {
-            local $self->{'_vars'}->{'component'} = $doc;
-            $self->{'_vars'}->{'template'}  = $doc if $self->{'_top_level'};
+            local $self->{'_component'} = $doc;
+            local $self->{'_template'}  = $self->{'_top_level'} ? $doc : $self->{'_template'};
+            local @{ $self }{@CONFIG_RUNTIME} = @{ $self }{@CONFIG_RUNTIME};
             $self->execute_tree($doc->{'_tree'}, $out_ref);
-            delete $self->{'_vars'}->{'template'} if $self->{'_top_level'};
+        }
+
+        ### trim whitespace from the beginning and the end of a block or template
+        if ($self->{'TRIM'}) {
+            substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ \s+ $ }{}x; # tail first
+            substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ ^ \s+ }{}x;
         }
     };
-
-    ### trim whitespace from the beginning and the end of a block or template
-    if ($self->{'TRIM'}) {
-        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ \s+ $ }{}x; # tail first
-        substr($$out_ref, $i, length($$out_ref) - $i) =~ s{ ^ \s+ }{}x;
-    }
 
     ### handle exceptions
     if (my $err = $@) {
@@ -374,9 +390,9 @@ sub load_parsed_tree {
 
     ### looks like a string reference
     if (ref $file) {
-        $doc->{'_content'}   = $file;
-        $doc->{'name'}       = 'input text';
-        $doc->{'is_str_ref'} = 1;
+        $doc->{'_content'}    = $file;
+        $doc->{'name'}        = 'input text';
+        $doc->{'_is_str_ref'} = 1;
 
     ### looks like a previously cached-in-memory document
     } elsif ($self->{'_documents'}->{$file}
@@ -473,12 +489,13 @@ sub load_parsed_tree {
             $self->{'NAMESPACE'}->{$key} ||= $self->{'CONSTANTS'};
         }
 
-        local $self->{'_vars'}->{'component'} = $doc;
-        $doc->{'_tree'} = $self->parse_tree($doc->{'_content'}); # errors die
+        local $self->{'_component'} = $doc;
+        $doc->{'_tree'} = eval { $self->parse_tree($doc->{'_content'}) }
+            || do { my $e = $@; $e->doc($doc) if UNIVERSAL::can($e, 'doc') && ! $e->doc; die $e }; # errors die
     }
 
     ### cache parsed_tree in memory unless asked not to do so
-    if (! $doc->{'is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
+    if (! $doc->{'_is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
         $doc->{'_cache_time'} = time;
 
@@ -524,11 +541,14 @@ sub parse_tree {
     my $END   = $self->{'END_TAG'}   || $TAGS->{$STYLE}->[1];
     local $self->{'_end_tag'} = $END;
 
+    local @{ $self }{@CONFIG_COMPILETIME} = @{ $self }{@CONFIG_COMPILETIME};
+
     my @tree;             # the parsed tree
     my $pointer = \@tree; # pointer to current tree to handle nested blocks
     my @state;            # maintain block levels
     local $self->{'_state'} = \@state; # allow for items to introspect (usually BLOCKS)
     local $self->{'_in_perl'};         # no interpolation in perl
+    my @in_view;          # let us know if we are in a view
     my @move_to_front;    # items that need to be declared first (usually BLOCKS)
     my @meta;             # place to store any found meta information (to go into META)
     my $post_chomp = 0;   # previous post_chomp setting
@@ -583,11 +603,15 @@ sub parse_tree {
                 splice(@$pointer, -1, 1, ()) if ! length $pointer->[-1]; # remove the node if it is zero length
             }
             if ($$str_ref =~ m{ \G \# }gcx) {       # leading # means to comment the entire section
-                $$str_ref =~ m{ \G (.*?) ($END) }gcxs # brute force - can't comment tags with nested %]
+                $$str_ref =~ m{ \G (.*?) ([+~=-]?) ($END) }gcxs # brute force - can't comment tags with nested %]
                     || $self->throw('parse', "Missing closing tag", undef, pos($$str_ref));
                 $node->[0] = '#';
-                $node->[2] = pos($$str_ref) - length($2);
+                $node->[2] = pos($$str_ref) - length($3);
                 push @$pointer, $node;
+
+                $post_chomp = $2;
+                $post_chomp ||= $self->{'POST_CHOMP'};
+                $post_chomp =~ y/-=~+/1230/ if $post_chomp;
                 next;
             }
             $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
@@ -626,7 +650,7 @@ sub parse_tree {
                     $parent_node->[5] = $node;
                     my $parent_type = $parent_node->[0];
                     if (! $DIRECTIVES->{$func}->[4]->{$parent_type}) {
-                        $self->throw('parse', "Found unmatched nested block", $node, 0);
+                        $self->throw('parse', "Found unmatched nested block", $node, pos($$str_ref));
                     }
                 }
 
@@ -636,12 +660,21 @@ sub parse_tree {
                 ### normal end block
                 if ($func eq 'END') {
                     if ($DIRECTIVES->{$parent_node->[0]}->[5]) { # move things like BLOCKS to front
-                        push @move_to_front, $parent_node;
+                        if ($parent_node->[0] eq 'BLOCK'
+                            && defined($parent_node->[3])
+                            && @in_view) {
+                            push @{ $in_view[-1] }, $parent_node;
+                        } else {
+                            push @move_to_front, $parent_node;
+                        }
                         if ($pointer->[-1] && ! $pointer->[-1]->[6]) { # capturing doesn't remove the var
                             splice(@$pointer, -1, 1, ());
                         }
                     } elsif ($parent_node->[0] =~ /PERL$/) {
                         delete $self->{'_in_perl'};
+                    } elsif ($parent_node->[0] eq 'VIEW') {
+                        my $ref = { map {($_->[3] => $_->[4])} @{ pop @in_view }};
+                        unshift @{ $parent_node->[3] }, $ref;
                     }
 
                 ### continuation block - such as an elsif
@@ -657,43 +690,44 @@ sub parse_tree {
 
             } elsif ($func eq 'TAGS') {
                 my $end;
-                if ($$str_ref =~ m{
-                        \G (\w+)                # tags name
-                        \s* $QR_COMMENTS        # optional comments
-                        ([+~=-]?) ($END)        # forced close
-                    }gcx) {
+                if ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxs) {
                     my $ref = $TAGS->{lc $1} || $self->throw('parse', "Invalid TAGS name \"$1\"", undef, pos($$str_ref));
                     ($START, $END) = @$ref;
-                    ($post_chomp, $end) = ($2, $3);
 
-                } elsif ($$str_ref =~ m{
-                            \G (\S+) \s+ (\S+)   # two non-space things
-                            (?:\s+(un|)quoted?)? # optional unquoted adjective
-                            \s* $QR_COMMENTS     # optional comments
-                            ([+~=-]?) ($END)     # forced close
-                        }gcxo) {
-                    ($START, $END, my $unquote, $post_chomp, $end) = ($1, $2, $3, $4, $5);
-                    for ($START, $END) {
-                        if ($unquote) { eval { "" =~ /$_/; 1 } || $self->throw('parse', "Invalid TAGS \"$_\": $@", undef, pos($$str_ref)) }
-                        else { $_ = quotemeta $_ }
-                    }
                 } else {
-                    $self->throw('parse', "Invalid TAGS", undef, pos($$str_ref));
+                    local $self->{'_operator_precedence'} = 1; # prevent operator matching
+                    $START = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+                        ? $self->parse_expr($str_ref)
+                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s+ $QR_COMMENTS"})
+                            || $self->throw('parse', "Invalid opening tag in TAGS", undef, pos($$str_ref));
+                    $END   = $$str_ref =~ m{ \G (?= [\'\"\/]) }gcx
+                        ? $self->parse_expr($str_ref)
+                        : $self->parse_expr($str_ref, {auto_quote => "(\\S+) \\s* $QR_COMMENTS"})
+                            || $self->throw('parse', "Invalid closing tag in TAGS", undef, pos($$str_ref));
+                    for my $tag ($START, $END) {
+                        $tag = $self->play_expr($tag);
+                        $tag = quotemeta($tag) if ! ref $tag;
+                    }
                 }
-                $post_chomp ||= $self->{'POST_CHOMP'};
-                $post_chomp =~ y/-=~+/1230/ if $post_chomp;
 
-                $node->[2] = pos($$str_ref) - length($end);
-                $continue = 0;
-                $post_op  = undef;
+                $node->[2] = pos $$str_ref;
 
-                $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
-                next;
+                ### allow for one more closing tag of the old style
+                if ($$str_ref =~ m{ \G ([+~=-]?) $self->{'_end_tag'} }gcxs) {
+                    $post_chomp = $1 || $self->{'POST_CHOMP'};
+                    $post_chomp =~ y/-=~+/1230/ if $post_chomp;
+                    $continue = 0;
+                    $post_op  = undef;
+                    $self->{'_end_tag'} = $END; # need to keep track so parse_expr knows when to stop
+                    next;
+                }
+
+                $self->{'_end_tag'} = $END;
 
             } elsif ($func eq 'META') {
-                my $args = $self->parse_args($str_ref);
+                my $args = $self->parse_args($str_ref, {named_at_front => 1});
                 my $hash;
-                if (($hash = $self->play_expr($args->[-1]))
+                if (($hash = $self->play_expr($args->[0]))
                     && UNIVERSAL::isa($hash, 'HASH')) {
                     unshift @meta, %$hash; # first defined win
                 }
@@ -709,20 +743,13 @@ sub parse_tree {
                     push @state, $node;
                     $pointer = $node->[4] ||= [];
                 }
+                push @in_view, [] if $func eq 'VIEW';
             }
-
-        #} elsif (1) {
-        #    $node->[0] = 'GET';
-        #    $node->[2] = $node->[1] + 5;
-        #    $node->[3] = ['one',0];
-        #    $$str_ref =~ m{ $END }gcx;
-        #    push @$pointer, $node;
-        #    next;
 
         ### allow for bare variable getting and setting
         } elsif (defined(my $var = $self->parse_expr($str_ref))) {
             push @$pointer, $node;
-            if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? \s* $QR_COMMENTS }gcxo) {
+            if ($$str_ref =~ m{ \G ($QR_OP_ASSIGN) >? (?! [+=~-]? $END) \s* $QR_COMMENTS }gcx) {
                 $node->[0] = 'SET';
                 $node->[3] = eval { $DIRECTIVES->{'SET'}->[0]->($self, $str_ref, $node, $1, $var) };
                 if (my $err = $@) {
@@ -734,21 +761,18 @@ sub parse_tree {
                 $node->[3] = $var;
             }
 
-        ### now look for the closing tag
-        } elsif ($$str_ref =~ m{ \G ([+=~-]?) ($END) }gcxs) {
+        ### handle empty tags [% %]
+        } elsif ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
-
             $node->[2] = pos($$str_ref) - length($end);
             $continue = 0;
             $post_op  = undef;
+            next;
 
         } else { # error
-            my $all  = substr($$str_ref, $node->[1], pos($$str_ref) - $node->[1]);
-            $all =~ s/^\s+//;
-            $all =~ s/\s+$//;
-            $self->throw('parse', "Not sure how to handle tag \"$all\"", $node);
+            $self->throw('parse', "Not sure how to handle tag", $node, pos($$str_ref));
         }
 
         ### we now have the directive to capture for an item like "SET foo = BLOCK" - store it
@@ -759,7 +783,7 @@ sub parse_tree {
         }
 
         ### look for the closing tag again
-        if ($$str_ref =~ m{ \G ([+=~-]?) ($END) }gcxs) {
+        if ($$str_ref =~ m{ \G (?: ; \s* $QR_COMMENTS)? ([+=~-]?) ($END) }gcxs) {
             my $end = $2;
             $post_chomp = $1 || $self->{'POST_CHOMP'};
             $post_chomp =~ y/-=~+/1230/ if $post_chomp;
@@ -841,17 +865,26 @@ sub parse_expr {
     my $str_ref = shift;
     my $ARGS    = shift || {};
     my $is_aq   = $ARGS->{'auto_quote'} ? 1 : 0;
+    my $mark    = pos $$str_ref;
 
     ### allow for custom auto_quoting (such as hash constructors)
     if ($is_aq) {
-        if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} \s* $QR_COMMENTS }gcx) {
+        if ($$str_ref =~ m{ \G $ARGS->{'auto_quote'} }gcx) {
             return $1;
 
-        ### allow for auto-quoted $foo or ${foo.bar} type constructs
-        } elsif ($$str_ref =~ m{ \G \$ (\w+ (?:\.\w+)*) \b \s* $QR_COMMENTS }gcxo) {
+        ### allow for auto-quoted $foo
+        } elsif ($$str_ref =~ m{ \G \$ (\w+\b (?:\.\w+\b)*) \s* $QR_COMMENTS }gcxo) {
             my $name = $1;
-            return $self->parse_expr(\$name);
+            if ($$str_ref !~ m{ \G \( }gcx || $name =~ /^(?:qw|m|\d)/) {
+                return $self->parse_expr(\$name);
+            }
+            ### this is a little cryptic/odd - but TT allows items in
+            ### autoquote position to only be prefixed by a $ - gross
+            ### so we will defer to the regular parsing - but after the $
+            pos($$str_ref) = $mark + 1;
+            $is_aq = undef; # but don't allow operators - false flag handed down
 
+        ### allow for ${foo.bar} type constructs
         } elsif ($$str_ref =~ m{ \G \$\{ \s* }gcx) {
             my $var = $self->parse_expr($str_ref);
             $$str_ref =~ m{ \G \s* \} \s* $QR_COMMENTS }gcxo
@@ -863,7 +896,6 @@ sub parse_expr {
 
     ### test for leading prefix operators
     my $has_prefix;
-    my $mark = pos $$str_ref;
     while (! $is_aq && $$str_ref =~ m{ \G ($QR_OP_PREFIX) }gcxo) {
         push @{ $has_prefix }, $1;
         $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
@@ -872,6 +904,7 @@ sub parse_expr {
     my @var;
     my $is_literal;
     my $is_namespace;
+    my $already_parsed_args;
 
     ### allow hex
     if ($$str_ref =~ m{ \G 0x ( [a-fA-F0-9]+ ) \s* $QR_COMMENTS }gcxo) {
@@ -886,14 +919,31 @@ sub parse_expr {
         $is_literal = 1;
 
     ### allow for quoted array constructor
-    } elsif (! $is_aq && $$str_ref =~ m{ \G qw (\W) \s* }gcxo) {
+    } elsif (! $is_aq && $$str_ref =~ m{ \G qw ([^\w\s]) \s* }gcxo) {
         my $quote = $1;
         $quote =~ y|([{<|)]}>|;
-        $$str_ref =~ m{ \G (.*?) \Q$quote\E \s* $QR_COMMENTS }gcxs
+        $$str_ref =~ m{ \G (.*?) (?<!\\) \Q$quote\E \s* $QR_COMMENTS }gcxs
             || $self->throw('parse.missing.array_close', "Missing close \"$quote\"", undef, pos($$str_ref));
         my $str = $1;
-        $str =~ s{ ^ \s+ | \s+ $ }{}x;
+        $str =~ s{ ^ \s+ }{}x;
+        $str =~ s{ \s+ $ }{}x;
+        $str =~ s{ \\ \Q$quote\E }{$quote}gx;
         push @var, [undef, '[]', split /\s+/, $str];
+
+    ### allow for regex constructor
+    } elsif (! $is_aq && $$str_ref =~ m{ \G / }gcx) {
+        $$str_ref =~ m{ \G (.*?) (?<! \\) / ([msixeg]*) \s* $QR_COMMENTS }gcxos
+            || $self->throw('parse', 'Unclosed regex tag "/"', undef, pos($$str_ref));
+        my ($str, $opts) = ($1, $2);
+        $self->throw('parse', 'e option not allowed on regex',   undef, pos($$str_ref)) if $opts =~ /e/;
+        $self->throw('parse', 'g option not supported on regex', undef, pos($$str_ref)) if $opts =~ /g/;
+        $str =~ s|\\n|\n|g;
+        $str =~ s|\\t|\t|g;
+        $str =~ s|\\r|\r|g;
+        $str =~ s|\\\/|\/|g;
+        $str =~ s|\\\$|\$|g;
+        $self->throw('parse', "Invalid regex: $@", undef, pos($$str_ref)) if ! eval { "" =~ /$str/; 1 };
+        push @var, [undef, 'qr', $str, $opts];
 
     ### looks like a normal variable start
     } elsif ($$str_ref =~ m{ \G (\w+) \s* $QR_COMMENTS }gcxo) {
@@ -901,24 +951,27 @@ sub parse_expr {
         $is_namespace = 1 if $self->{'NAMESPACE'} && $self->{'NAMESPACE'}->{$1};
 
     ### allow for literal strings
-    } elsif ($$str_ref =~ m{ \G ([\"\']) (|.*?[^\\]) \1 \s* $QR_COMMENTS }gcxos) {
-        if ($1 eq "'") { # no interpolation on single quoted strings
-            my $str = $2;
+    } elsif ($$str_ref =~ m{ \G ([\"\']) }gcx) {
+        my $quote = $1;
+        $$str_ref =~ m{ \G (.*?) (?<! \\) $quote \s* $QR_COMMENTS }gcxs
+            || $self->throw('parse', "Unclosed quoted string ($1)", undef, pos($$str_ref));
+        my $str = $1;
+        if ($quote eq "'") { # no interpolation on single quoted strings
             $str =~ s{ \\\' }{\'}xg;
             push @var, \ $str;
             $is_literal = 1;
         } else {
-            my $str = $2;
             $str =~ s/\\n/\n/g;
             $str =~ s/\\t/\t/g;
             $str =~ s/\\r/\r/g;
             $str =~ s/\\"/"/g;
-            my @pieces = $ARGS->{'auto_quote'}
+            my @pieces = $is_aq
                 ? split(m{ (?: ^ | (?<!\\)) (\$\w+            | \$\{ .*? (?<!\\) \}) }x, $str)  # autoquoted items get a single $\w+ - no nesting
                 : split(m{ (?: ^ | (?<!\\)) (\$\w+ (?:\.\w+)* | \$\{ .*? (?<!\\) \}) }x, $str);
             my $n = 0;
             foreach my $piece (@pieces) {
                 $piece =~ s/\\\$/\$/g;
+                $piece =~ s/\\//g;
                 next if ! ($n++ % 2);
                 next if $piece !~ m{ ^ \$ (\w+ (?:\.\w+)*) $ }x
                     && $piece !~ m{ ^ \$\{ \s* (.*?) (?<!\\) \} $ }x;
@@ -938,7 +991,6 @@ sub parse_expr {
             }
         }
         if ($is_aq) {
-            #$$str_ref = $copy; # TODO ?
             return ${ $var[0] } if $is_literal;
             push @var, 0;
             return \@var;
@@ -975,7 +1027,7 @@ sub parse_expr {
     } elsif (! $is_aq && $$str_ref =~ m{ \G \{ \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $hashref = [undef, '{}'];
-        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))) {
+        while (defined(my $key = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))) {
             $$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo;
             my $val = $self->parse_expr($str_ref);
             push @$hashref, $key, $val;
@@ -992,19 +1044,36 @@ sub parse_expr {
 
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo
             || $self->throw('parse.missing.paren', "Missing close \)", undef, pos($$str_ref));
-        @var = @$var;
-        pop @var; # pull off the trailing args of the paren group
-        # TODO - we could forward lookahed for a period or pipe
+
+        $self->throw('parse', 'Paren group cannot be followed by an open paren', undef, pos($$str_ref))
+            if $$str_ref =~ m{ \G \( }gcx;
+
+        $already_parsed_args = 1;
+        if (! ref $var) {
+            push @var, \$var, 0;
+            $is_literal = 1;
+        } elsif (! defined $var->[0]) {
+            push @var, $var, 0;
+        } else {
+            push @var, @$var;
+        }
 
     ### nothing to find - return failure
     } else {
+        pos($$str_ref) = $mark if $is_aq || $has_prefix;
         return;
     }
 
-    return if $is_aq; # auto_quoted thing was too complicated
+    # auto_quoted thing was too complicated
+    if ($is_aq) {
+        pos($$str_ref) = $mark;
+        return;
+    }
 
     ### looks for args for the initial
-    if ($$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo) {
+    if ($already_parsed_args) {
+        # do nothing
+    } elsif ($$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo) {
         local $self->{'_operator_precedence'} = 0; # reset precedence
         my $args = $self->parse_args($str_ref, {is_parened => 1});
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo
@@ -1014,9 +1083,17 @@ sub parse_expr {
         push @var, 0;
     }
 
+
     ### allow for nested items
-    while ($$str_ref =~ m{ \G ( \.(?!\.) | \|(?!\|) ) \s* $QR_COMMENTS }gcxo) {
+    while ($$str_ref =~ m{ \G ( \.(?!\.) | \|(?!\|) ) }gcx) {
+        if ($1 eq '|' && $self->{'V2PIPE'}) {
+            pos($$str_ref) -= 1;
+            last;
+        }
+
         push(@var, $1) if ! $ARGS->{'no_dots'};
+
+        $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
 
         ### allow for interpolated variables in the middle - one.$foo.two
         if ($$str_ref =~ m{ \G \$ (\w+) \b \s* $QR_COMMENTS }gcxo) {
@@ -1064,7 +1141,7 @@ sub parse_expr {
     }
 
     ### allow for all "operators"
-    if (! $self->{'_operator_precedence'}) {
+    if (! $self->{'_operator_precedence'} && defined $is_aq) {
         my $tree;
         my $found;
         while (1) {
@@ -1222,34 +1299,75 @@ sub parse_args {
 
     my @args;
     my @named;
+    my $name;
+    my $end = $self->{'_end_tag'} || '(?!)';
     while (1) {
         my $mark = pos $$str_ref;
+
+        ### look to see if the next thing is a directive or a closing tag
         if (! $ARGS->{'is_parened'}
-            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo
+            && ! $ARGS->{'require_arg'}
+            && $$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$end))) }gcxo
             && ((pos($$str_ref) = $mark) || 1)                  # always revert
             && $DIRECTIVES->{$self->{'ANYCASE'} ? uc($1) : $1}  # looks like a directive - we are done
             ) {
             last;
         }
-
-        if (defined(my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
-            && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # see if we also match assignment
-                || ((pos $$str_ref = $mark) && 0))               # if not - we need to rollback
-            ) {
-            $self->throw('parse', 'Named arguments not allowed', undef, $mark) if $ARGS->{'positional_only'};
-            my $val = $self->parse_expr($str_ref);
-            $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
-            push @named, $name, $val;
-        } elsif (defined(my $arg = $self->parse_expr($str_ref))) {
-            push @args, $arg;
-            $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo;
-        } else {
+        if ($$str_ref =~ m{ \G [+=~-]? $end }gcx) {
+            pos($$str_ref) = $mark;
             last;
         }
+
+        ### find the initial arg
+        my $name;
+        if ($ARGS->{'allow_bare_filenames'}) {
+            $name = $self->parse_expr($str_ref, {auto_quote => "
+              ($QR_FILENAME               # file name
+              | \\w+\\b (?: :\\w+\\b)* )  # or block
+                (?= [+=~-]? $end          # an end tag
+                  | \\s*[+,;]             # followed by explicit + , or ;
+                  | \\s+ (?! [\\s=])      # or space not before an =
+                )  \\s* $QR_COMMENTS"});
+            # filenames can be separated with a "+" - why a "+" ?
+            if ($$str_ref =~ m{ \G \+ (?! [+=~-]? $end) \s* $QR_COMMENTS }gcxo) {
+                push @args, $name;
+                $ARGS->{'require_arg'} = 1;
+                next;
+            }
+        }
+        if (! defined $name) {
+            $name = $self->parse_expr($str_ref);
+            if (! defined $name) {
+                if ($ARGS->{'require_arg'} && ! @args && ! $ARGS->{'positional_only'} && ! @named) {
+                    $self->throw('parse', 'Argument required', undef, pos($$str_ref));
+                } else {
+                    last;
+                }
+            }
+        }
+
+        $$str_ref =~ m{ \G \s* $QR_COMMENTS }gcxo;
+
+        ### see if it is named or positional
+        if ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo) {
+            $self->throw('parse', 'Named arguments not allowed', undef, $mark) if $ARGS->{'positional_only'};
+            my $val = $self->parse_expr($str_ref);
+            $name = $name->[0] if ref($name) && @$name == 2 && ! $name->[1]; # strip a level of indirection on named arguments
+            push @named, $name, $val;
+        } else {
+            push @args, $name;
+        }
+
+        ### look for trailing comma
+        $ARGS->{'require_arg'} = ($$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo) || 0;
     }
 
-    ### allow for named arguments to be added also
-    push @args, [[undef, '{}', @named], 0] if scalar @named;
+    ### allow for named arguments to be added at the front (if asked)
+    if ($ARGS->{'named_at_front'}) {
+        unshift @args, [[undef, '{}', @named], 0];
+    } elsif (scalar @named) { # only add at end - if there are some
+        push @args,    [[undef, '{}', @named], 0]
+    }
 
     return \@args;
 }
@@ -1349,7 +1467,7 @@ sub play_expr {
             return if $name =~ $QR_PRIVATE; # don't allow vars that begin with _
             return \$self->{'_vars'}->{$name} if $i >= $#$var && $ARGS->{'return_ref'} && ! ref $self->{'_vars'}->{$name};
             $ref = $self->{'_vars'}->{$name};
-            $ref = $VOBJS->{$name} if ! defined $ref;
+            $ref = ($name eq 'template' || $name eq 'component') ? $self->{"_$name"} : $VOBJS->{$name} if ! defined $ref;
         }
     }
 
@@ -1513,6 +1631,12 @@ sub play_expr {
     }
 
     return $ref;
+}
+
+sub is_empty_named_args {
+    my ($self, $hash_ident) = @_;
+    # [[undef, '{}', 'key1', 'val1', 'key2, 'val2'], 0]
+    return @{ $hash_ident->[0] } <= 2;
 }
 
 sub set_variable {
@@ -1722,6 +1846,8 @@ sub play_operator {
             $last->[-1] = (ref $last->[-1] ? [@{ $last->[-1] }, @_] : [@_]) if @_;
             return $self->play_expr($last);
         } };
+    } elsif ($op eq 'qr') {
+        return $tree->[3] ? qr{(?$tree->[3]:$tree->[2])} : qr{$tree->[2]};
     }
 
     $self->throw('operator', "Un-implemented operation $op");
@@ -1732,18 +1858,19 @@ sub play_operator {
 sub parse_BLOCK {
     my ($self, $str_ref, $node) = @_;
 
-    my $block_name = '';
-    if ($$str_ref =~ m{ \G (\w+ (?: :\w+)*) \s* (?! [\.\|]) }gcx
-        || $$str_ref =~ m{ \G '(|.*?[^\\])' \s* (?! [\.\|]) }gcx
-        || $$str_ref =~ m{ \G "(|.*?[^\\])" \s* (?! [\.\|]) }gcx
-        ) {
-        $block_name = $1;
-        ### allow for nested blocks to have nested names
-        my @names = map {$_->[3]} grep {$_->[0] eq 'BLOCK'} @{ $self->{'_state'} };
-        $block_name = join("/", @names, $block_name) if scalar @names;
-    }
+    my $end = $self->{'_end_tag'} || '(?!)';
+    my $block_name = $self->parse_expr($str_ref, {auto_quote => "
+              ($QR_FILENAME               # file name
+              | \\w+\\b (?: :\\w+\\b)* )  # or block
+                (?= [+=~-]? $end          # an end tag
+                  | \\s*[+,;]             # followed by explicit + , or ;
+                  | \\s+ (?! [\\s=])      # or space not before an =
+                )  \\s* $QR_COMMENTS"});
 
-    return $block_name;
+    return '' if ! defined $block_name;
+
+    my $prepend = join "/", map {$_->[3]} grep {ref($_) && $_->[0] eq 'BLOCK'} @{ $self->{'_state'} || {} };
+    return $prepend ? "$prepend/$block_name" : $block_name;
 }
 
 sub play_BLOCK {
@@ -1752,7 +1879,7 @@ sub play_BLOCK {
     ### store a named reference - but do nothing until something processes it
     $self->{'BLOCKS'}->{$block_name} = {
         _tree => $node->[4],
-        name  => $self->{'_vars'}->{'component'}->{'name'} .'/'. $block_name,
+        name  => $self->{'_component'}->{'name'} .'/'. $block_name,
     };
 
     return;
@@ -1770,7 +1897,7 @@ sub parse_CASE {
 
 sub parse_CATCH {
     my ($self, $str_ref) = @_;
-    return $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
+    return $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \\s* $QR_COMMENTS"});
 }
 
 sub play_control {
@@ -1781,6 +1908,50 @@ sub play_control {
 sub play_CLEAR {
     my ($self, $undef, $node, $out_ref) = @_;
     $$out_ref = '';
+}
+
+sub parse_CONFIG {
+    my ($self, $str_ref) = @_;
+
+    my %ctime = map {$_ => 1} @CONFIG_COMPILETIME;
+    my %rtime = map {$_ => 1} @CONFIG_RUNTIME;
+
+    my $config = $self->parse_args($str_ref, {named_at_front => 1, is_parened => 1});
+    my $ref = $config->[0]->[0];
+    for (my $i = 2; $i < @$ref; $i += 2) {
+        my $key = $ref->[$i] = uc $ref->[$i];
+        my $val = $ref->[$i + 1];
+        if ($ctime{$key}) {
+            splice @$ref, $i, 2, (); # remove the options
+            $self->{$key} = $self->play_expr($val);
+            $i -= 2;
+        } elsif (! $rtime{$key}) {
+            $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
+        }
+    }
+    for (my $i = 1; $i < @$config; $i++) {
+        my $key = $config->[$i] = uc $config->[$i]->[0];
+        if ($ctime{$key}) {
+            $config->[$i] = "CONFIG $key = ".(defined($self->{$key}) ? $self->{$key} : 'undef');
+        } elsif (! $rtime{$key}) {
+            $self->throw('parse', "Unknown CONFIG option \"$key\"", undef, pos($$str_ref));
+        }
+    }
+    return $config;
+}
+
+sub play_CONFIG {
+    my ($self, $config) = @_;
+
+    my %rtime = map {$_ => 1} @CONFIG_RUNTIME;
+
+    ### do runtime config - not many options get these
+    my ($named, @the_rest) = @$config;
+    $named = $self->play_expr($named);
+    @{ $self }{keys %$named} = @{ $named }{keys %$named};
+
+    ### show what current values are
+    return join("\n", map { $rtime{$_} ? ("CONFIG $_ = ".(defined($self->{$_}) ? $self->{$_} : 'undef')) : $_ } @the_rest);
 }
 
 sub parse_DEBUG {
@@ -1825,36 +1996,54 @@ sub play_DEFAULT {
 
 sub parse_DUMP {
     my ($self, $str_ref) = @_;
-    my $ref = $self->parse_expr($str_ref);
-    return $ref;
+    return $self->parse_args($str_ref, {named_at_front => 1});
 }
 
 sub play_DUMP {
-    my ($self, $ident, $node) = @_;
-    require Data::Dumper;
-    local $Data::Dumper::Sortkeys  = 1;
+    my ($self, $dump, $node) = @_;
+
+    my $conf = $self->{'DUMP'};
+    return if ! $conf && defined $conf; # DUMP => 0
+    $conf = {} if ref $conf ne 'HASH';
+
+    ### allow for handler override
+    my $handler = $conf->{'handler'};
+    if (! $handler) {
+        require Data::Dumper;
+        my $obj = Data::Dumper->new([]);
+        my $meth;
+        foreach my $prop (keys %$conf) { $obj->$prop($conf->{$prop}) if $prop =~ /^\w+$/ && ($meth = $obj->can($prop)) }
+        my $sort = defined($conf->{'Sortkeys'}) ? $obj->Sortkeys : 1;
+        $obj->Sortkeys(sub { my $h = shift; [grep {$_ !~ $QR_PRIVATE} ($sort ? sort keys %$h : keys %$h)] });
+        $handler = sub { $obj->Values([@_]); $obj->Dump }
+    }
+
+    my ($named, @dump) = @$dump;
+    push @dump, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    $_ = $self->play_expr($_) foreach @dump;
+
+    ### look for the text describing what to dump
     my $info = $self->node_info($node);
     my $out;
-    my $var;
-    if ($ident) {
-        $out = Data::Dumper::Dumper($self->play_expr($ident));
-        $var = $info->{'text'};
-        $var =~ s/^[+\-~=]?\s*DUMP\s+//;
-        $var =~ s/\s*[+\-~=]?$//;
+    if (@dump) {
+        $out = $handler->(@dump && @dump == 1 ? $dump[0] : \@dump);
+        my $name = $info->{'text'};
+        $name =~ s/^[+=~-]?\s*DUMP\s+//;
+        $name =~ s/\s*[+=~-]?$//;
+        $out =~ s/\$VAR1/$name/;
+    } elsif (defined($conf->{'EntireStash'}) && ! $conf->{'EntireStash'}) {
+        $out = '';
     } else {
-        my @were_never_here = (qw(template component), grep {$_ =~ $QR_PRIVATE} keys %{ $self->{'_vars'} });
-        local @{ $self->{'_vars'} }{ @were_never_here };
-        delete @{ $self->{'_vars'} }{ @were_never_here };
-        $out = Data::Dumper::Dumper($self->{'_vars'});
-        $var = 'EntireStash';
+        $out = $handler->($self->{'_vars'});
+        $out =~ s/\$VAR1/EntireStash/g;
     }
-    if ($ENV{'REQUEST_METHOD'}) {
-        $out =~ s/</&lt;/g;
+
+    if ($conf->{'html'} || (! defined($conf->{'html'}) && $ENV{'REQUEST_METHOD'})) {
+        $out = $SCALAR_OPS->{'html'}->($out);
         $out = "<pre>$out</pre>";
-        $out =~ s/\$VAR1/$var/;
-        $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out";
+        $out = "<b>DUMP: File \"$info->{file}\" line $info->{line}</b>$out" if $conf->{'header'} || ! defined $conf->{'header'};
     } else {
-        $out =~ s/\$VAR1/$var/;
+        $out = "DUMP: File \"$info->{file}\" line $info->{line}\n    $out" if $conf->{'header'} || ! defined $conf->{'header'};
     }
 
     return $out;
@@ -2048,10 +2237,11 @@ sub play_INCLUDE {
 sub parse_INSERT { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_INSERT {
-    my ($self, $var, $node, $out_ref) = @_;
-    my ($names, $args) = @$var;
+    my ($self, $args, $node, $out_ref) = @_;
 
-    foreach my $name (@$names) {
+    my ($named, @files) = @$args;
+
+    foreach my $name (@files) {
         my $filename = $self->play_expr($name);
         $$out_ref .= $self->_insert($filename);
     }
@@ -2062,7 +2252,7 @@ sub play_INSERT {
 sub parse_MACRO {
     my ($self, $str_ref, $node) = @_;
 
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"});
     $self->throw('parse', "Missing macro name", undef, pos($$str_ref)) if ! defined $name;
     if (! ref $name) {
         $name = [ $name, 0 ];
@@ -2127,16 +2317,17 @@ sub play_MACRO {
 
 sub play_META {
     my ($self, $hash) = @_;
+
+    my @keys = keys %$hash;
+
     my $ref;
     if ($self->{'_top_level'}) {
-        $ref = $self->{'_vars'}->{'template'} ||= {};
+        $ref = $self->{'_template'} ||= {};
     } else {
-        $ref = $self->{'_vars'}->{'component'} ||= {};
+        $ref = $self->{'_component'} ||= {};
     }
-    foreach my $key (keys %$hash) {
-        next if $key eq 'name' || $key eq 'modtime';
-        $ref->{$key} = $hash->{$key};
-    }
+
+    @{ $ref }{ @keys } = @{ $hash }{ @keys };
     return;
 }
 
@@ -2185,50 +2376,25 @@ sub play_PERL {
 
 sub parse_PROCESS {
     my ($self, $str_ref) = @_;
-    my $info = [[], []];
-    while (defined(my $filename = $self->parse_expr($str_ref, {
-                       auto_quote => "($QR_FILENAME | \\w+ (?: :\\w+)* ) $QR_AQ_SPACE",
-                   }))) {
-        push @{$info->[0]}, $filename;
-        last if $$str_ref !~ m{ \G \+ \s* $QR_COMMENTS }gcxo;
-    }
 
-    ### we can almost use parse_args - except we allow for nested key names (foo.bar) here
-    while (1) {
-        my $mark = pos $$str_ref;
-        if ($$str_ref =~ m{ \G $QR_DIRECTIVE (?: \s+ | (?: \s* $QR_COMMENTS (?: ;|[+=~-]?$self->{'_end_tag'}))) }gcxo) {
-            pos($$str_ref) = $mark;
-            last if $DIRECTIVES->{$self->{'ANYCASE'} ? uc $1 : $1}; # looks like a directive - we are done
-        }
-        if ($$str_ref =~ m{ \G [+=~-]? $self->{'_end_tag'} }gcx) {
-            pos($$str_ref) = $mark;
-            last;
-        }
-
-        my $var = $self->parse_expr($str_ref);
-
-        last if ! defined $var;
-        if ($$str_ref !~ m{ \G = >? \s* }gcx) {
-            $self->throw('parse.missing.equals', 'Missing equals while parsing args', undef, pos($$str_ref));
-        }
-
-        my $val = $self->parse_expr($str_ref);
-        push @{$info->[1]}, [$var, $val];
-        $$str_ref =~ m{ \G , \s* $QR_COMMENTS }gcxo if $val;
-    }
-
-    return $info;
+    return $self->parse_args($str_ref, {
+        named_at_front       => 1,
+        allow_bare_filenames => 1,
+        require_arg          => 1,
+    });
 }
 
 sub play_PROCESS {
     my ($self, $info, $node, $out_ref) = @_;
 
-    my ($files, $args) = @$info;
+    my ($args, @files) = @$info;
 
     ### set passed args
-    foreach (@$args) {
-        my $key = $_->[0];
-        my $val = $self->play_expr($_->[1]);
+    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
+    $args = $args->[0];
+    foreach (my $i = 2; $i < @$args; $i+=2) {
+        my $key = $args->[$i];
+        my $val = $self->play_expr($args->[$i+1]);
         if (ref($key) && @$key == 2 && $key->[0] eq 'import' && UNIVERSAL::isa($val, 'HASH')) { # import ?! - whatever
             foreach my $key (keys %$val) {
                 $self->set_variable([$key,0], $val->{$key});
@@ -2239,7 +2405,7 @@ sub play_PROCESS {
     }
 
     ### iterate on any passed block or filename
-    foreach my $ref (@$files) {
+    foreach my $ref (@files) {
         next if ! defined $ref;
         my $filename = $self->play_expr($ref);
         my $out = ''; # have temp item to allow clear to correctly clear
@@ -2250,10 +2416,18 @@ sub play_PROCESS {
 
         ### allow for $template which is used in some odd instances
         } else {
-            $self->throw('process', "Unable to process document $filename") if $ref->[0] ne 'template';
+            my $doc;
+            if ($ref->[0] eq 'template') {
+                $doc = $filename;
+            } else {
+                $doc = $self->play_expr($ref);
+                if (ref($doc) ne 'HASH' || ! $doc->{'_tree'}) {
+                    $self->throw('process', "Passed item doesn't appear to be a valid document");
+                }
+            }
             $self->throw('process', "Recursion detected in $node->[0] \$template") if $self->{'_process_dollar_template'};
             local $self->{'_process_dollar_template'} = 1;
-            local $self->{'_vars'}->{'component'} = my $doc = $filename;
+            local $self->{'_component'} = $filename;
             return if ! $doc->{'_tree'};
 
             ### execute and trim
@@ -2352,6 +2526,7 @@ sub parse_SET {
             push @SET, ['=', $set, undef];
         }
     }
+
     return \@SET;
 }
 
@@ -2423,16 +2598,21 @@ sub play_SWITCH {
 
 sub parse_THROW {
     my ($self, $str_ref, $node) = @_;
-    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: \\.\\w+)*) $QR_AQ_SPACE"});
+    my $name = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: \\.\\w+\\b)*) $QR_AQ_SPACE \\s* $QR_COMMENTS"});
     $self->throw('parse.missing', "Missing name in THROW", $node, pos($$str_ref)) if ! $name;
-    my $args = $self->parse_args($str_ref);
+    my $args = $self->parse_args($str_ref, {named_at_front => 1});
     return [$name, $args];
 }
 
 sub play_THROW {
     my ($self, $ref, $node) = @_;
     my ($name, $args) = @$ref;
+
     $name = $self->play_expr($name);
+
+    my $named = shift @$args;
+    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+
     my @args = $args ? map { $self->play_expr($_) } @$args : ();
     $self->throw($name, \@args, $node);
 }
@@ -2515,20 +2695,20 @@ sub parse_USE {
 
     my $var;
     my $mark = pos $$str_ref;
-    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+) $QR_AQ_NOTDOT"}))
+    if (defined(my $_var = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b) (?! \\.) \\s* $QR_COMMENTS"}))
         && ($$str_ref =~ m{ \G = >? \s* $QR_COMMENTS }gcxo # make sure there is assignment
-            || ((pos $$str_ref = $mark) && 0))               # otherwise we need to rollback
+            || ((pos($$str_ref) = $mark) && 0))               # otherwise we need to rollback
         ) {
         $var = $_var;
     }
 
-    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+ (?: (?:\\.|::) \\w+)*) $QR_AQ_NOTDOT"});
+    my $module = $self->parse_expr($str_ref, {auto_quote => "(\\w+\\b (?: (?:\\.|::) \\w+\\b)*) (?! \\.) \\s* $QR_COMMENTS"});
     $self->throw('parse', "Missing plugin name while parsing $$str_ref", undef, pos($$str_ref)) if ! defined $module;
     $module =~ s/\./::/g;
 
     my $args;
     my $open = $$str_ref =~ m{ \G \( \s* $QR_COMMENTS }gcxo;
-    $args = $self->parse_args($str_ref, {is_parened => $open});
+    $args = $self->parse_args($str_ref, {is_parened => $open, named_at_front => 1});
 
     if ($open) {
         $$str_ref =~ m{ \G \) \s* $QR_COMMENTS }gcxo || $self->throw('parse.missing', "Missing close ')'", undef, pos($$str_ref));
@@ -2545,6 +2725,9 @@ sub play_USE {
     $var = $module if ! defined $var;
     my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
     pop @var; # remove the trailing '.'
+
+    my $named = shift @$args;
+    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
     ### look for a plugin_base
     my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
@@ -2595,6 +2778,74 @@ sub play_USE {
     return;
 }
 
+sub parse_VIEW {
+    my ($self, $str_ref) = @_;
+
+    my $ref = $self->parse_args($str_ref, {
+        named_at_front       => 1,
+        require_arg          => 1,
+    });
+
+    return $ref;
+}
+#sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
+
+sub play_VIEW {
+    my ($self, $ref, $node, $out_ref) = @_;
+
+    my ($blocks, $args, $name) = @$ref;
+
+    ### get args ready
+    # [[undef, '{}', 'key1', 'val1', 'key2', 'val2'], 0]
+    $args = $args->[0];
+    my $hash = {};
+    foreach (my $i = 2; $i < @$args; $i+=2) {
+        my $key = $args->[$i];
+        my $val = $self->play_expr($args->[$i+1]);
+        if (ref $key) {
+            if (@$key == 2 && ! ref($key->[0]) && ! $key->[1]) {
+                $key = $key->[0];
+            } else {
+                $self->set_variable($key, $val);
+                next; # what TT does
+            }
+        }
+        $hash->{$key} = $val;
+    }
+
+    ### prepare the blocks
+    my $prefix = $hash->{'prefix'} || (ref($name) && @$name == 2 && ! $name->[1] && ! ref($name->[0])) ? "$name->[0]/" : '';
+    foreach my $key (keys %$blocks) {
+        $blocks->{$key} = {name => "${prefix}${key}", _tree => $blocks->{$key}};
+    }
+    $hash->{'blocks'} = $blocks;
+
+    ### get the view
+    if (! eval { require Template::View }) {
+        $self->throw('view', 'Could not load Template::View library');
+    }
+    my $view = Template::View->new($self->context, $hash)
+        || $self->throw('view', $Template::View::ERROR);
+
+    ### 'play it'
+    my $old_view = $self->play_expr(['view', 0]);
+    $self->set_variable($name, $view);
+    $self->set_variable(['view', 0], $view);
+
+    if ($node->[4]) {
+        my $out = '';
+        $self->execute_tree($node->[4], \$out);
+        # throw away $out
+    }
+
+    $self->set_variable(['view', 0], $old_view);
+    $view->seal;
+
+    return '';
+}
+
+sub parse_WHILE { $DIRECTIVES->{'IF'}->[0]->(@_) }
+
 sub play_WHILE {
     my ($self, $var, $node, $out_ref) = @_;
     return '' if ! defined $var;
@@ -2622,21 +2873,21 @@ sub play_WHILE {
     return undef;
 }
 
-sub parse_WRAPPER { $DIRECTIVES->{'INCLUDE'}->[0]->(@_) }
+sub parse_WRAPPER { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_WRAPPER {
-    my ($self, $var, $node, $out_ref) = @_;
+    my ($self, $args, $node, $out_ref) = @_;
     my $sub_tree = $node->[4] || return;
 
-    my ($names, $args) = @$var;
+    my ($named, @files) = @$args;
 
     my $out = '';
     $self->execute_tree($sub_tree, \$out);
 
-    foreach my $name (reverse @$names) {
+    foreach my $name (reverse @files) {
         local $self->{'_vars'}->{'content'} = $out;
         $out = '';
-        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [[$name], $args], $node, \$out);
+        $DIRECTIVES->{'INCLUDE'}->[1]->($self, [$named, $name], $node, \$out);
     }
 
     $$out_ref .= $out;
@@ -2663,7 +2914,7 @@ sub include_filename {
 
     my $paths = $self->{'INCLUDE_PATHS'} ||= do {
         # TT does this everytime a file is looked up - we are going to do it just in time - the first time
-        my $paths = $self->{'INCLUDE_PATH'} || $self->throw('file', "INCLUDE_PATH not set");
+        my $paths = $self->{'INCLUDE_PATH'} || [];
         $paths = $paths->()                 if UNIVERSAL::isa($paths, 'CODE');
         $paths = $self->split_paths($paths) if ! UNIVERSAL::isa($paths, 'ARRAY');
         $paths; # return of the do
@@ -2759,7 +3010,6 @@ sub process {
         my $var2 = $self->{'VARIABLES'} || $self->{'PRE_DEFINE'} || {};
         $var1->{'global'} ||= {}; # allow for the "global" namespace - that continues in between processing
         my $copy = {%$var2, %$var1, %$swap};
-        local $copy->{'template'};
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
 
@@ -2782,7 +3032,7 @@ sub process {
             my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
                 ? $doc->{'_tree'}->[0]->[3] : {};
 
-            $copy->{'template'} = $doc;
+            local $self->{'_template'} = $doc;
             @{ $doc }{keys %$meta} = values %$meta;
 
             ### process any other templates
@@ -2885,7 +3135,9 @@ sub DEBUG {
 ###----------------------------------------------------------------###
 
 sub exception {
-    my ($self, $type, $info, $node) = @_;
+    my $self = shift;
+    my $type = shift;
+    my $info = shift;
     return $type if ref($type) =~ /Template::Exception$/;
     if (ref($info) eq 'ARRAY') {
         my $hash = ref($info->[-1]) eq 'HASH' ? pop(@$info) : {};
@@ -2901,7 +3153,7 @@ sub exception {
             $type = 'undef';
         }
     }
-    return $PACKAGE_EXCEPTION->new($type, $info, $node);
+    return $PACKAGE_EXCEPTION->new($type, $info, @_);
 }
 
 sub throw { die shift->exception(@_) }
@@ -2962,7 +3214,7 @@ sub debug_node {
 
 sub node_info {
     my ($self, $node) = @_;
-    my $doc = $self->{'_vars'}->{'component'};
+    my $doc = $self->{'_component'};
     my $i = $node->[1];
     my $j = $node->[2] || return ''; # META can be 0
     $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
@@ -2977,9 +3229,11 @@ sub node_info {
 }
 
 sub get_line_number_by_index {
-    my ($self, $doc, $index) = @_;
+    my ($self, $doc, $index, $include_char) = @_;
+    return 1 if $index <= 0;
+
     ### get the line offsets for the doc
-    my $lines = $doc->{'line_offsets'} ||= do {
+    my $lines = $doc->{'_line_offsets'} ||= do {
         $doc->{'_content'} ||= do { my $s = $self->slurp($doc->{'_filename'}) ; \$s };
         my $i = 0;
         my @lines = (0);
@@ -2990,15 +3244,20 @@ sub get_line_number_by_index {
         }
         \@lines;
     };
+
     ### binary search them (this is fast even on big docs)
-    return $#$lines + 1 if $index > $lines->[-1];
     my ($i, $j) = (0, $#$lines);
-    while (1) {
-        return $i + 1 if abs($i - $j) <= 1;
-        my $k = int(($i + $j) / 2);
-        $j = $k if $lines->[$k] >= $index;
-        $i = $k if $lines->[$k] <= $index;
+    if ($index > $lines->[-1]) {
+        $i = $j;
+    } else {
+        while (1) {
+            last if abs($i - $j) <= 1;
+            my $k = int(($i + $j) / 2);
+            $j = $k if $lines->[$k] >= $index;
+            $i = $k if $lines->[$k] <= $index;
+        }
     }
+    return $include_char ? ($i + 1, $index - $lines->[$i]) : $i + 1;
 }
 
 ###----------------------------------------------------------------###
@@ -3018,7 +3277,7 @@ sub define_vmethod {
     return 1;
 }
 
-sub vmethod_as_scalar {
+sub vmethod_fmt_scalar {
     my $str = shift; $str = ''   if ! defined $str;
     my $pat = shift; $pat = '%s' if ! defined $pat;
     local $^W;
@@ -3026,7 +3285,7 @@ sub vmethod_as_scalar {
               : sprintf($pat, $str);
 }
 
-sub vmethod_as_list {
+sub vmethod_fmt_list {
     my $ref = shift || return '';
     my $pat = shift; $pat = '%s' if ! defined $pat;
     my $sep = shift; $sep = ' '  if ! defined $sep;
@@ -3035,7 +3294,7 @@ sub vmethod_as_list {
               : join($sep, map {sprintf $pat, $_} @$ref);
 }
 
-sub vmethod_as_hash {
+sub vmethod_fmt_hash {
     my $ref = shift || return '';
     my $pat = shift; $pat = "%s\t%s" if ! defined $pat;
     my $sep = shift; $sep = "\n"     if ! defined $sep;
@@ -3098,6 +3357,15 @@ sub vmethod_nsort {
                                                                : UNIVERSAL::can($_, $field) ? $_->$field()
                                                                : $_)]} @$list ]
         : [sort {$a <=> $b} @$list];
+}
+
+sub vmethod_pick {
+    my $ref = shift;
+    no warnings;
+    my $n   = int(shift);
+    $n = 1 if $n < 1;
+    my @ind = map { $ref->[ rand @$ref ] } 1 .. $n;
+    return $n == 1 ? $ind[0] : \@ind;
 }
 
 sub vmethod_repeat {
@@ -3177,6 +3445,13 @@ sub vmethod_uri {
     return $str;
 }
 
+sub vmethod_url {
+    my $str = shift;
+    utf8::encode($str) if defined &utf8::encode;
+    $str =~ s/([^;\/?:@&=+\$,A-Za-z0-9\-_.!~*\'()])/sprintf('%%%02X', ord($1))/eg;
+    return $str;
+}
+
 sub filter_eval {
     my $context = shift;
 
@@ -3243,8 +3518,8 @@ use overload
     fallback => 1;
 
 sub new {
-    my ($class, $type, $info, $node, $pos, $str_ref) = @_;
-    return bless [$type, $info, $node, $pos, $str_ref], $class;
+    my ($class, $type, $info, $node, $pos, $doc) = @_;
+    return bless [$type, $info, $node, $pos, $doc], $class;
 }
 
 sub type { shift->[0] }
@@ -3253,28 +3528,34 @@ sub info { shift->[1] }
 
 sub node {
     my $self = shift;
-    $self->[2] = shift if $#_ == 0;
+    $self->[2] = shift if @_;
     $self->[2];
 }
 
-sub offset { shift->[3] || 0 }
+sub offset {
+    my $self = shift;
+    $self->[3] = shift if @_;
+    $self->[3];
+}
 
 sub doc {
     my $self = shift;
-    $self->[4] = shift if $#_ == 0;
+    $self->[4] = shift if @_;
     $self->[4];
 }
 
 sub as_string {
     my $self = shift;
-    my $msg  = $self->type .' error - '. $self->info;
-    if (my $node = $self->node) {
-#        $msg .= " (In tag $node->[0] starting at char ".($node->[1] + $self->offset).")";
-    }
     if ($self->type =~ /^parse/) {
-        $msg .= " (At char ".$self->offset.")";
+        if (my $doc = $self->doc) {
+            my ($line, $char) = CGI::Ex::Template->get_line_number_by_index($doc, $self->offset, 'include_char');
+            return $self->type ." error - $doc->{'name'} line $line char $char: ". $self->info;
+        } else {
+            return $self->type .' error - '. $self->info .' (At char '. $self->offset .')';
+        }
+    } else {
+        return $self->type .' error - '. $self->info;
     }
-    return $msg;
 }
 
 ###----------------------------------------------------------------###
@@ -3342,6 +3623,11 @@ use vars qw($AUTOLOAD);
 
 sub _template { shift->{'_template'} || die "Missing _template" }
 
+sub template {
+    my ($self, $name) = @_;
+    return $self->_template->{'BLOCKS'}->{$name} || $self->_template->load_parsed_tree($name);
+}
+
 sub config { shift->_template }
 
 sub stash {
@@ -3356,21 +3642,29 @@ sub eval_perl { shift->_template->{'EVAL_PERL'} }
 sub process {
     my $self = shift;
     my $ref  = shift;
-    my $vars = $self->_template->_vars;
+    my $args = shift || {};
+
+    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+
     my $out  = '';
-    $self->_template->_process($ref, $vars, \$out);
+    $self->_template->_process($ref, $self->_template->_vars, \$out);
     return $out;
 }
 
 sub include {
     my $self = shift;
-    my $file = shift;
+    my $ref  = shift;
     my $args = shift || {};
 
-    $self->_template->set_variable($_, $args->{$_}) for keys %$args;
+    my $t = $self->_template;
+
+    my $swap = $t->{'_vars'};
+    local $t->{'_vars'} = {%$swap};
+
+    $t->set_variable($_, $args->{$_}) for keys %$args;
 
     my $out = ''; # have temp item to allow clear to correctly clear
-    eval { $self->_template->_process($file, $self->{'_vars'}, \$out) };
+    eval { $t->_process($ref, $t->_vars, \$out) };
     if (my $err = $@) {
         die $err if ref($err) !~ /Template::Exception$/ || $err->type !~ /return/;
     }

@@ -14,7 +14,7 @@ BEGIN {
 };
 
 use strict;
-use Test::More tests => ! $is_tt ? 740 : 579;
+use Test::More tests => ! $is_tt ? 806 : 599;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -27,21 +27,27 @@ Taint::Runtime::taint_start() if test_taint;
 sub process_ok { # process the value and say if it was ok
     my $str  = shift;
     my $test = shift;
-    my $vars = shift;
-    my $obj  = shift || $module->new(@{ $vars->{tt_config} || [] }); # new object each time
+    my $vars = shift || {};
+    my $conf = local $vars->{'tt_config'} = $vars->{'tt_config'} || [];
+    my $obj  = shift || $module->new(@$conf); # new object each time
     my $out  = '';
     my $line = (caller)[2];
+    delete $vars->{'tt_config'};
 
     Taint::Runtime::taint(\$str) if test_taint;
 
     $obj->process(\$str, $vars, \$out);
     my $ok = ref($test) ? $out =~ $test : $out eq $test;
-    ok($ok, "Line $line   \"$str\" => \"$out\"" . ($ok ? '' : " - should've been \"$test\""));
-    warn "#   process_ok called at line $line.\n" if ! $ok;
-    print $obj->error if ! $ok && $obj->can('error');
-    print Dumper $obj->parse_tree(\$str) if ! $ok && $obj->can('parse_tree');
-    exit if ! $ok;
-    return $obj;
+    if ($ok) {
+        ok(1, "Line $line   \"$str\" => \"$out\"");
+        return $obj;
+    } else {
+        ok(0, "Line $line   \"$str\"");
+        warn "# Was:\n$out\n# Should've been:\n$test\n";
+        print $obj->error if $obj->can('error');
+        print Dumper $obj->parse_tree(\$str) if $obj->can('parse_tree');
+        exit;
+    }
 }
 
 ###----------------------------------------------------------------###
@@ -99,6 +105,7 @@ process_ok("[% foo(7) %]" => 7,      {foo => sub { $_[0] }});
 process_ok("[% foo.length %]" => 1,  {foo => sub { 7 }});
 process_ok("[% foo.0 %]" => 7,       {foo => sub { return 7, 2, 3 }});
 process_ok("[% foo(bar) %]" => 7,    {foo => sub { $_[0] }, bar => 7});
+process_ok("[% foo(bar.baz) %]" => 7,{foo => sub { $_[0] }, bar => {baz => 7}});
 process_ok("[% foo.seven %]" => 7,   {foo => $obj});
 process_ok("[% foo.seven() %]" => 7, {foo => $obj});
 process_ok("[% foo.seven.length %]" => 1, {foo => $obj});
@@ -167,7 +174,9 @@ process_ok("[% foo.\$name %]" => 7, {name => 'bar', foo => {bar => 7}});
 process_ok("[% foo.\$name.baz %]" => '', {name => 'bar', bar => {baz => 7}});
 
 process_ok("[% \"hi\" %]" => 'hi');
+process_ok("[% \"hi %]" => '');
 process_ok("[% 'hi' %]" => 'hi');
+process_ok("[% 'hi %]"  => '');
 process_ok("[% \"\$foo\" %]"   => '7', {foo => 7});
 process_ok("[% \"hi \$foo\" %]"   => 'hi 7', {foo => 7});
 process_ok("[% \"hi \${foo}\" %]" => 'hi 7', {foo => 7});
@@ -182,12 +191,16 @@ process_ok("[% \"hi \${foo.echo(7)}\" %]" => 'hi 7', {foo => $obj});
 process_ok("[% _foo %]2" => '2', {_foo => 1});
 process_ok("[% \$bar %]2" => '2', {_foo => 1, bar => '_foo'});
 process_ok("[% __foo %]2" => '2', {__foo => 1});
-process_ok("[% _foo = 1 %][% _foo %]2" => '2');
-process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
 
 process_ok("[% qw/Foo Bar Baz/.0 %]" => 'Foo') if ! $is_tt;
 process_ok('[% [0..10].-1 %]' => '10') if ! $is_tt;
 process_ok('[% [0..10].${ 2.3 } %]' => '2') if ! $is_tt;
+
+process_ok("[% (1 + 2)() %]" => ''); # parse error
+process_ok("[% (1 + 2) %]" => '3');
+process_ok("[% (a) %]" => '2', {a => 2});
+process_ok("[% ('foo') %]" => 'foo');
+process_ok("[% (a(2)) %]" => '2', {a => sub { $_[0] }});
 
 ###----------------------------------------------------------------###
 print "### SET ##############################################################\n";
@@ -261,29 +274,15 @@ process_ok("[% foo = 1 bar = 2 %][% foo %][% bar %]" => '12');
 process_ok("[% foo = 1 bar = 2 %][% foo = 3 bar %][% foo %][% bar %]" => '232') if ! $is_tt;
 process_ok("[% a = 1 a = a + 2 a %]" => 3) if ! $is_tt;
 
+process_ok("[% _foo = 1 %][% _foo %]2" => '2');
+process_ok("[% foo._bar %]2" => '2', {foo => {_bar =>1}});
+
 ###----------------------------------------------------------------###
-print "### reserved words ###################################################\n";
+print "### multiple statements in same tag ##################################\n";
 
-$vars = {
-    GET => 'named_get',
-    get => 'lower_named_get',
-    named_get => 'value of named_get',
-    hold_get => 'GET',
-};
-process_ok("[% GET %]" => '', $vars);
-process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
-process_ok("[% GET get %]" => 'lower_named_get', $vars);
-process_ok("[% GET \${'GET'} %]" => 'bar', {GET => 'bar'});
-
-process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
-process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
-
-process_ok("[% GET \$hold_get %]" => 'named_get', $vars);
-process_ok("[% GET \$GET %]" => 'value of named_get', $vars) if ! $is_tt;
-process_ok("[% BLOCK GET %]hi[% END %][% PROCESS GET %]" => 'hi') if ! $is_tt;
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo a = GET %]" => 'hi', $vars) if ! $is_tt;
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
-process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
+process_ok("[% foo; %]" => '1', {foo => 1});
+process_ok("[% GET foo; %]" => '1', {foo => 1});
+process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
 
 ###----------------------------------------------------------------###
 print "### CALL / DEFAULT ###################################################\n";
@@ -302,10 +301,6 @@ ok($t == 3, "CALL method actually called var");
 print "### scalar vmethods ##################################################\n";
 
 process_ok("[% n.0 %]" => '7', {n => 7}) if ! $is_tt;
-process_ok("[% n.as %]" => '7', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('%02d') %]" => '07', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
-process_ok("[% n.as('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
 process_ok("[% n.chunk(3).join %]" => 'abc def g', {n => 'abcdefg'});
 process_ok("[% n.chunk(-3).join %]" => 'a bcd efg', {n => 'abcdefg'});
 process_ok("[% n|collapse %]" => "a b", {n => '  a  b  '}); # TT2 filter
@@ -318,11 +313,12 @@ process_ok("[% n|indent('wow ') %]" => "wow a\nwow b", {n => "a\nb"}); # TT2 fil
 process_ok("[% n.int %]" => "123", {n => "123.234"}) if ! $is_tt;
 process_ok("[% n.int %]" => "123", {n => "123gggg"}) if ! $is_tt;
 process_ok("[% n.int %]" => "0", {n => "ff123.234"}) if ! $is_tt;
+process_ok("[% n.fmt %]" => '7', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%02d') %]" => '07', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
 process_ok("[% n.fmt('(%s)') %]" => "(a\nb)", {n => "a\nb"}) if ! $is_tt;
 process_ok("[% n|format('%02d') %]" => '07', {n => 7}); # TT2 filter
-process_ok("[% n.format('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
+process_ok("[% n|format('%0*d', 3) %]" => '007', {n => 7}) if ! $is_tt;
 process_ok("[% n|format('(%s)') %]" => "(a)\n(b)", {n => "a\nb"}); # TT2 filter
 process_ok("[% n.hash.items.1 %]" => "b", {n => {a => "b"}});
 process_ok("[% n|html %]" => "&amp;", {n => '&'}); # TT2 filter
@@ -369,16 +365,13 @@ process_ok("[% n|uri %]" => 'a%20b', {n => "a b"}); # TT2 filter
 ###----------------------------------------------------------------###
 print "### list vmethods ####################################################\n";
 
-process_ok("[% a.as %]" => '2 3', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
-process_ok("[% a.as('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.defined %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(1) %]" => '1', {a => [2,3]});
 process_ok("[% a.defined(3) %]" => '', {a => [2,3]});
 process_ok("[% a.first %]" => '2', {a => [2..10]});
 process_ok("[% a.first(3).join %]" => '2 3 4', {a => [2..10]});
+process_ok("[% a.fmt %]" => '2 3', {a => [2,3]}) if ! $is_tt;
+process_ok("[% a.fmt('%02d') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%02d',' ') %]" => '02 03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%02d','|') %]" => '02|03', {a => [2,3]}) if ! $is_tt;
 process_ok("[% a.fmt('%0*d','|', 3) %]" => '002|003', {a => [2,3]}) if ! $is_tt;
@@ -405,7 +398,8 @@ process_ok("[% a.nsort.join %]" => '1 2 3', {a => [2, 3, 1]});
 process_ok("[% a.nsort('b').0.b %]" => '7', {a => [{b => 23}, {b => 7}]});
 process_ok("[% a.pop %][% a.join %]" => '32', {a => [2, 3]});
 process_ok("[% a.push(3) %][% a.join %]" => '2 3 3', {a => [2, 3]});
-process_ok("[% a.random %]" => qr{ ^\d$ }x, {a => [2, 3]}) if ! $is_tt;
+process_ok("[% a.pick %]" => qr{ ^[23]$ }x, {a => [2, 3]}) if ! $is_tt;
+process_ok("[% a.pick(5).join('') %]" => qr{ ^[23]{5}$ }x, {a => [2, 3]}) if ! $is_tt;
 process_ok("[% a.reverse.join %]" => '3 2', {a => [2, 3]});
 process_ok("[% a.shift %][% a.join %]" => '23', {a => [2, 3]});
 process_ok("[% a.size %]" => '2', {a => [2, 3]});
@@ -424,25 +418,18 @@ process_ok("[% a.unshift(3) %][% a.join %]" => '3 2 3', {a => [2, 3]});
 ###----------------------------------------------------------------###
 print "### hash vmethods ####################################################\n";
 
-process_ok("[% h.as %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
-process_ok("[% h.as('%*s=>%*s', '|', 3, 4) %]" => "  b=>   B|  c=>   C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.defined %]" => "1", {h => {}});
 process_ok("[% h.defined('a') %]" => "1", {h => {a => 1}});
 process_ok("[% h.defined('b') %]" => "", {h => {a => 1}});
 process_ok("[% h.defined('a') %]" => "", {h => {a => undef}});
-process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "1|b", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
-process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "1 2|", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "|", {h => {a => 1, b=> 2}}) if $is_tt;
-process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "1 |b", {h => {a => 1, b=> 2}}) if ! $is_tt;
-process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}}) if $is_tt;
+process_ok("[% h.delete('a') %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}});
+process_ok("[% h.delete('a', 'b').join %]|[% h.keys.0 %]" => "|", {h => {a => 1, b=> 2}});
+process_ok("[% h.delete('a', 'c').join %]|[% h.keys.0 %]" => "|b", {h => {a => 1, b=> 2}});
 process_ok("[% h.each.sort.join %]" => "1 2 a b", {h => {a => 1, b=> 2}});
 process_ok("[% h.exists('a') %]" => "1", {h => {a => 1}});
 process_ok("[% h.exists('b') %]" => "", {h => {a => 1}});
 process_ok("[% h.exists('a') %]" => "1", {h => {a => undef}});
+process_ok("[% h.fmt %]" => "b\tB\nc\tC", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%s => %s') %]" => "b => B\nc => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%s => %s', '|') %]" => "b => B|c => C", {h => {b => "B", c => "C"}}) if ! $is_tt;
 process_ok("[% h.fmt('%*s=>%s', '|', 3) %]" => "  b=>B|  c=>C", {h => {b => "B", c => "C"}}) if ! $is_tt;
@@ -506,8 +493,7 @@ process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => 
 process_ok('[% "hi" FILTER foo %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {$_[0]x2},0]}]});
 process_ok('[% "hi" FILTER foo(2) %]' => 'hihi', {tt_config => [FILTERS => {foo => [sub {my$a=$_[1];sub{$_[0]x$a}},1]}]});
 
-process_ok('[% ["a".."z"].random %]' => qr/^[a-z]/) if ! $is_tt;
-process_ok('[% ["a".."z"].${ 26.rand } %]' => qr/^[a-z]/) if ! $is_tt;
+process_ok('[% ["a".."z"].pick %]' => qr/^[a-z]/) if ! $is_tt;
 
 process_ok("[% ' ' | uri %]" => '%20');
 
@@ -522,9 +508,9 @@ process_ok('[% {a => "B", c => "D"}.fmt %]' => "a\tB\nc\tD") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.fmt("%s:%s") %]' => "a:B\nc:D") if ! $is_tt;
 process_ok('[% {a => "B", c => "D"}.fmt("%s:%s", "; ") %]' => "a:B; c:D") if ! $is_tt;
 
-process_ok('[% 1.format("%s") %]' => '1') if ! $is_tt;
-process_ok('[% 1.format("%*s", 6) %]' => '     1') if ! $is_tt;
-process_ok('[% 1.format("%-*s", 6) %]' => '1     ') if ! $is_tt;
+process_ok('[% 1|format("%s") %]' => '1') if ! $is_tt;
+process_ok('[% 1|format("%*s", 6) %]' => '     1') if ! $is_tt;
+process_ok('[% 1|format("%-*s", 6) %]' => '1     ') if ! $is_tt;
 
 process_ok('[% 1.fmt("%-*s", 6) %]' => '1     ') if ! $is_tt;
 process_ok('[% [1,2].fmt("%-*s", "|", 6) %]' => '1     |2     ') if ! $is_tt;
@@ -557,13 +543,13 @@ process_ok(" \n\n[%- foo %]" => " \n");
 process_ok(" \n[%- foo %]" => " ") if ! $is_tt;
 process_ok(" \n \n[%- foo %]" => " \n ") if ! $is_tt;
 
-process_ok("[% foo %] " => ' ');
-process_ok("[% foo -%] " => ' ');
-process_ok("[% foo -%]\n" => '');
-process_ok("[% foo -%] \n" => '');
-process_ok("[% foo -%]\n " => ' ');
-process_ok("[% foo -%]\n\n\n" => "\n\n");
-process_ok("[% foo -%] \n " => ' ');
+process_ok("[% 7 %] " => '7 ');
+process_ok("[% 7 -%] " => '7 ');
+process_ok("[% 7 -%]\n" => '7');
+process_ok("[% 7 -%] \n" => '7');
+process_ok("[% 7 -%]\n " => '7 ');
+process_ok("[% 7 -%]\n\n\n" => "7\n\n");
+process_ok("[% 7 -%] \n " => '7 ');
 
 ###----------------------------------------------------------------###
 print "### string operators #################################################\n";
@@ -655,21 +641,41 @@ process_ok("[% t = 0 or 0 ? 0 : 0 or 2 ? 2 : 3 %][% t %]" => '2');
 process_ok("[% 0 ? 1 ? 1 + 2 * 3 : 1 + 2 * 4 : 1 + 2 * 5 %]" => '11');
 
 ###----------------------------------------------------------------###
+print "### regex ############################################################\n";
+
+process_ok("[% /foo/ %]"     => '(?-xism:foo)') if ! $is_tt;
+process_ok("[% /foo %]"      => '') if ! $is_tt;
+process_ok("[% /foo/x %]"    => '(?-xism:(?x:foo))') if ! $is_tt;
+process_ok("[% /foo/xi %]"   => '(?-xism:(?xi:foo))') if ! $is_tt;
+process_ok("[% /foo/xis %]"  => '(?-xism:(?xis:foo))') if ! $is_tt;
+process_ok("[% /foo/xism %]" => '(?-xism:(?xism:foo))') if ! $is_tt;
+process_ok("[% /foo/e %]"    => '') if ! $is_tt;
+process_ok("[% /foo/g %]"    => '') if ! $is_tt;
+process_ok("[% /foo %]"      => '') if ! $is_tt;
+process_ok("[% /foo**/ %]"   => '') if ! $is_tt;
+process_ok("[% /fo\\/o/ %]"     => '(?-xism:fo/o)') if ! $is_tt;
+process_ok("[% 'foobar'.match(/(f\\w\\w)/).0 %]" => 'foo') if ! $is_tt;
+
+###----------------------------------------------------------------###
 print "### BLOCK / PROCESS / INCLUDE#########################################\n";
 
-process_ok("[% PROCESS foo %]" => '');
-process_ok("[% BLOCK foo %]" => '');
-process_ok("[% BLOCK foo %][% END %]" => '');
+process_ok("[% PROCESS foo %]one" => '');
+process_ok("[% BLOCK foo %]one" => '');
+process_ok("[% BLOCK foo %][% END %]one" => 'one');
 process_ok("[% BLOCK %][% END %]one" => 'one');
-process_ok("[% BLOCK foo %]hi there[% END %]" => '');
+process_ok("[% BLOCK foo %]hi there[% END %]one" => 'one');
 process_ok("[% BLOCK foo %][% BLOCK foo %][% END %][% END %]" => '');
 process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo %]" => 'hi there');
 process_ok("[% PROCESS foo %][% BLOCK foo %]hi there[% END %]" => 'hi there');
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo foo %]" => 'hi therehi there') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo, foo %]" => 'hi therehi there') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi there[% END %][% PROCESS foo + foo %]" => 'hi therehi there');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo %]" => 'hi ONE there', {one => 'ONE'});
 process_ok("[% BLOCK foo %]hi [% IF 1 %]Yes[% END %] there[% END %]<<[% PROCESS foo %]>>" => '<<hi Yes there>>');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %]" => 'hi two there');
 process_ok("[% BLOCK foo %]hi [% one.two %] there[% END %][% PROCESS foo one.two = 'two' %]" => 'hi two there');
 process_ok("[% BLOCK foo %]hi [% one.two %] there[% END %][% PROCESS foo + foo one.two = 'two' %]" => 'hi two there'x2);
+process_ok("[% BLOCK foo %][% BLOCK bar %]hi [% one %] there[% END %][% END %][% PROCESS foo/bar one => 'two' %]" => 'hi two there');
 
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% PROCESS foo one = 'two' %][% one %]" => 'hi two theretwo');
 process_ok("[% BLOCK foo %]hi [% one %] there[% END %][% INCLUDE foo one = 'two' %][% one %]" => 'hi two there');
@@ -702,6 +708,10 @@ process_ok("[%# BLOCK one %]" => '');
 process_ok("[%# BLOCK one %]two" => 'two');
 process_ok("[%# BLOCK one %]two[% END %]" => '');
 process_ok("[%# BLOCK one %]two[% END %]three" => '');
+process_ok("[%
+#
+-%]
+foo" => "foo");
 
 ###----------------------------------------------------------------###
 print "### FOREACH / NEXT / LAST ############################################\n";
@@ -746,6 +756,11 @@ process_ok("[% FOREACH [1..3] %][% loop.size %][% END %][% loop.size %]" => '333
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '333') if ! $is_tt;
 process_ok("[% FOREACH i = [1..3] %][% loop.size %][% END %][% loop.size %]" => '3331') if $is_tt;
 
+process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
+process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
+process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
+
 ###----------------------------------------------------------------###
 print "### WHILE ############################################################\n";
 
@@ -789,15 +804,6 @@ process_ok("[% FOREACH f = [1..3] %][% f %][% IF loop.last %][% CLEAR %][% END %
 process_ok("[% FOREACH f = [1..3] %][% IF loop.last %][% CLEAR %][% END %][% f %][% END %]" => '3');
 
 ###----------------------------------------------------------------###
-print "### multiple statements in same tag ##################################\n";
-
-process_ok("[% GET foo; GET foo %]" => '11', {foo => 1});
-process_ok('[% FOREACH f = [1..3]; 1; END %]' => '111');
-process_ok('[% FOREACH f = [1..3]; f; END %]' => '123');
-process_ok('[% FOREACH f = [1..3]; "$f"; END %]' => '123');
-process_ok('[% FOREACH f = [1..3]; f + 1; END %]' => '234');
-
-###----------------------------------------------------------------###
 print "### post opererative directives ######################################\n";
 
 process_ok("[% GET foo IF 1 %]" => '1', {foo => 1});
@@ -833,8 +839,10 @@ process_ok("[% TAGS mason     %]<% 1 + 2 >"  => 3);
 process_ok("[% TAGS metatext  %]%% 1 + 2 %%" => 3);
 process_ok("[% TAGS php       %]<? 1 + 2 ?>" => 3);
 process_ok("[% TAGS star      %][* 1 + 2 *]" => 3);
+process_ok("[% TAGS template  %][% 1 + 2 %]" => 3);
 process_ok("[% TAGS template1 %][% 1 + 2 %]" => 3);
 process_ok("[% TAGS template1 %]%% 1 + 2 %%" => 3);
+process_ok("[% TAGS tt2       %][% 1 + 2 %]" => 3);
 
 process_ok("[% TAGS html %] <!--- 1 + 2 -->" => '3');
 process_ok("[% TAGS html %]<!-- 1 + 2 --->" => '3') if ! $is_tt;
@@ -845,10 +853,15 @@ process_ok("[% BLOCK foo %][% TAGS html %]<!-- 1 + 2 -->[% END %][% PROCESS foo 
 process_ok("[% TAGS <!-- --> %]<!-- 1 + 2 -->" => '3');
 
 process_ok("[% TAGS [<] [>]          %][<] 1 + 2 [>]" => 3);
-process_ok("[% TAGS [<] [>] unquoted %]<   1 + 2 >"  => 3) if ! $is_tt;
+process_ok("[% TAGS '[<]' '[>]'      %][<] 1 + 2 [>]" => 3) if ! $is_tt;
+process_ok("[% TAGS /[<]/ /[>]/      %]<   1 + 2 >"  => 3) if ! $is_tt;
 process_ok("[% TAGS ** **            %]**  1 + 2 **" => 3);
-process_ok("[% TAGS ** ** quoted     %]**  1 + 2 **" => 3);
-process_ok("[% TAGS ** ** unquoted   %]**  1 + 2 **" => "") if ! $is_tt;
+process_ok("[% TAGS '**' '**'        %]**  1 + 2 **" => 3) if ! $is_tt;
+process_ok("[% TAGS /**/ /**/        %]**  1 + 2 **" => "") if ! $is_tt;
+
+process_ok("[% TAGS html --><!-- 1 + 2 -->" => '3') if ! $is_tt;
+process_ok("[% TAGS html ; 7 --><!-- 1 + 2 -->" => '73') if ! $is_tt;
+process_ok("[% TAGS html ; 7 %]<!-- 1 + 2 -->" => '') if ! $is_tt; # error - the old closing tag must come next
 
 ###----------------------------------------------------------------###
 print "### SWITCH / CASE ####################################################\n";
@@ -1012,6 +1025,18 @@ process_ok('[% "$a" %]|$a|[% "${a}" %]|${a}' => 'A|A|A|A',     {a => 'A', A => '
 process_ok('[% constants.a %]|[% $constants.a %]|[% constants.$a %]' => 'A|A|A', {tt_config => [V1DOLLAR => 1, CONSTANTS => {a => 'A'}]});
 
 ###----------------------------------------------------------------###
+print "### V2PIPE ###########################################################\n";
+
+process_ok("[%- BLOCK a %]b is [% b %]
+[% END %]
+[%- PROCESS a b => 237 | repeat(2) %]" => "b is 237
+b is 237\n", {tt_config => [V2PIPE => 1]});
+
+process_ok("[%- BLOCK a %]b is [% b %]
+[% END %]
+[%- PROCESS a b => 237 | repeat(2) %]" => "b is 237237\n") if ! $is_tt;
+
+###----------------------------------------------------------------###
 print "### configuration ####################################################\n";
 
 process_ok('[% a = 7 %]$a' => 7, {tt_config => ['INTERPOLATE' => 1]});
@@ -1035,7 +1060,10 @@ print "### META #############################################################\n"
 
 process_ok("[% template.name %]" => 'input text');
 process_ok("[% META foo = 'bar' %][% template.foo %]" => 'bar');
+process_ok("[% META name = 'bar' %][% template.name %]" => 'bar');
 process_ok("[% META foo = 'bar' %][% component.foo %]" => 'bar');
+process_ok("[% META foo = 'bar' %][% component = '' %][% component.foo %]|foo" => '|foo');
+process_ok("[% META foo = 'bar' %][% template = '' %][% template.foo %]|foo" => '|foo');
 
 ###----------------------------------------------------------------###
 print "### references #######################################################\n";
@@ -1065,6 +1093,30 @@ process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-") ; f = "ab"; fo
 process_ok('[% a = "ab" ; f = "abcd"; foo = \f.replace(a, "-AB-").replace("-AB-", "*") ; f = "ab"; foo %]' => '*cd');
 
 ###----------------------------------------------------------------###
+print "### reserved words ###################################################\n";
+
+$vars = {
+    GET => 'named_get',
+    get => 'lower_named_get',
+    named_get => 'value of named_get',
+    hold_get => 'GET',
+};
+process_ok("[% GET %]" => '', $vars);
+process_ok("[% GET GET %]" => 'named_get', $vars) if ! $is_tt;
+process_ok("[% GET get %]" => 'lower_named_get', $vars);
+process_ok("[% GET \${'GET'} %]" => 'bar', {GET => 'bar'});
+
+process_ok("[% GET = 1 %][% GET GET %]" => '', $vars);
+process_ok("[% SET GET = 1 %][% GET GET %]" => '1', $vars) if ! $is_tt;
+
+process_ok("[% GET \$hold_get %]" => 'named_get', $vars);
+process_ok("[% GET \$GET %]" => 'value of named_get', $vars) if ! $is_tt;
+process_ok("[% BLOCK GET %]hi[% END %][% PROCESS GET %]" => 'hi') if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo a = GET %]" => 'hi', $vars) if ! $is_tt;
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo GET = 1 %]" => '');
+process_ok("[% BLOCK foo %]hi[% END %][% PROCESS foo IF GET %]" => 'hi', $vars) if ! $is_tt;
+
+###----------------------------------------------------------------###
 print "### embedded items ###################################################\n";
 
 process_ok('[% " \" " %]' => ' " ');
@@ -1073,6 +1125,11 @@ process_ok('[% " \${foo} " %]' => ' ${foo} ');
 process_ok('[% " \n " %]' => " \n ");
 process_ok('[% " \t " %]' => " \t ");
 process_ok('[% " \r " %]' => " \r ");
+
+process_ok("[% 'foo\\'bar' %]"  => "foo'bar");
+process_ok('[% "foo\\"bar" %]'  => 'foo"bar');
+process_ok('[% qw(foo \)).1 %]' => ')') if ! $is_tt;
+process_ok('[% qw|foo \||.1 %]' => '|') if ! $is_tt;
 
 process_ok("[% ' \\' ' %]" => " ' ");
 process_ok("[% ' \\r ' %]" => ' \r ');
@@ -1098,6 +1155,58 @@ process_ok('[% qw([%  1  +  2  %]).join.eval %]' => '3') if ! $is_tt;
 
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'caught\' ; END %]"; f.eval %]' => '>>>>>caught', {tt_config => [MAX_EVAL_RECURSE => 5]}) if ! $is_tt;
 process_ok('[% f = ">[% TRY; f.eval ; CATCH; \'foo\' ; END %]"; f.eval;f.eval %]' => '>>foo>>foo', {tt_config => [MAX_EVAL_RECURSE => 2]}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### DUMP #############################################################\n";
+
+if (! $is_tt) {
+local $ENV{'REQUEST_METHOD'} = 0;
+process_ok("[% DUMP a %]" => "DUMP: File \"input text\" line 1\n    a = undef;\n");
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = undef;');
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = \'s\';', {a => "s"});
+process_ok("[%\n p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 2 a = \'s\';', {a => "s"});
+process_ok("[% p = DUMP a, b; p.collapse %]" => 'DUMP: File "input text" line 1 a, b = [ \'s\', undef ];', {a => "s"});
+process_ok("[% p = DUMP a Useqq => 'b'; p.collapse %]" => 'DUMP: File "input text" line 1 a Useqq => \'b\' = [ \'s\', { \'Useqq\' => \'b\' } ];', {a => "s"});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = "s";', {a => "s", tt_config => [DUMP => {Useqq => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]|foo" => '|foo', {a => "s", tt_config => [DUMP => 0]});
+process_ok("[% p = DUMP _a, b; p.collapse %]" => 'DUMP: File "input text" line 1 _a, b = [ undef, \'c\' ];', {_a => "s", b=> "c"});
+process_ok("[% p = DUMP {a => 'b'}; p.collapse %]" => 'DUMP: File "input text" line 1 {a => \'b\'} = { \'a\' => \'b\' };');
+process_ok("[% p = DUMP _a; p.collapse %]" => 'DUMP: File "input text" line 1 _a = undef;', {_a => "s"});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = { \'b\' => \'c\' };', {a => {b => 'c'}});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 a = {};', {a => {_b => 'c'}, tt_config => [DUMP => {Sortkeys => 1}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'DUMP: File "input text" line 1 Dump(7)', {a => 7, tt_config => [DUMP => {handler=>sub {"Dump(@_)"}}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0}]});
+process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0, html => 1}]});
+local $ENV{'REQUEST_METHOD'} = 1;
+process_ok("[% p = DUMP a; p.collapse %]" => '<pre>a = &apos;s&apos;; </pre>', {a => "s", tt_config => [DUMP => {header => 0}]});
+process_ok("[% p = DUMP a; p.collapse %]" => 'a = \'s\';', {a => "s", tt_config => [DUMP => {header => 0, html => 0}]});
+local $ENV{'REQUEST_METHOD'} = 0;
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1 EntireStash = { 'a' => 'b', 'global' => '' };", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 1}]});
+process_ok("[% SET global; p = DUMP; p.collapse %]" => "DUMP: File \"input text\" line 1", {a => 'b', tt_config => [DUMP => {Sortkeys => 1, EntireStash => 0}]});
+}
+
+###----------------------------------------------------------------###
+print "### CONFIG ############################################################\n";
+
+if (! $is_tt) {
+process_ok("[% CONFIG ANYCASE     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG anycase     => 1   %][% get 234 %]" => 234);
+process_ok("[% CONFIG PRE_CHOMP   => '-' %]\n[% 234 %]" => 234);
+process_ok("[% CONFIG POST_CHOMP  => '-' %][% 234 %]\n" => 234);
+process_ok("[% CONFIG INTERPOLATE => '-' %]\${ 234 }"   => 234);
+process_ok("[% CONFIG V1DOLLAR    => 1   %][% a = 234 %][% \$a %]"   => 234);
+process_ok("[% CONFIG V2PIPE => 1 %][% BLOCK a %]b is [% b %][% END %][% PROCESS a b => 234 | repeat(2) %]"   => "b is 234b is 234");
+
+process_ok("[% CONFIG BOGUS => 2 %]bar" => '');
+
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+process_ok("[% CONFIG ANYCASE %]|[% CONFIG ANYCASE => 1 %][% CONFIG ANYCASE %]" => 'CONFIG ANYCASE = undef|CONFIG ANYCASE = 1');
+
+process_ok("[% CONFIG DUMP    %]|[% CONFIG DUMP    => 0 %][% DUMP           %]bar" => 'CONFIG DUMP = undef|bar');
+process_ok("[% CONFIG DUMP => {Useqq=>1, header=>0, html=>0} %][% DUMP 'foo' %]" => "'foo' = \"foo\";\n");
+}
 
 ###----------------------------------------------------------------###
 print "### DONE #############################################################\n";

@@ -18,7 +18,7 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
     $t->process('my/template.tt', $swap)
         || die $t->error;
 
-    ### Anything in the Template::Toolkit SYNOPSIS would fit here also
+    ### CET uses the same syntax and configuration as Template::Toolkit
 
 =head1 DESCRIPTION
 
@@ -235,6 +235,10 @@ not just variables.
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
 
+=item You can use regular expression quoting.
+
+    [% "foo".match( /(F\w+)/i ).0 %] # = foo
+
 =item Tags can be nested.
 
     [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
@@ -265,6 +269,19 @@ the virtual method. (TT3)
 =item Pipe "|" and "." can be mixed. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
+
+=item Added V2PIPE configuration item
+
+Restores the behavior of the pipe operator to be
+compatible with TT2.
+
+With V2PIPE = 1
+
+    [% PROCESS a | repeat(2) %] # = value of block or file a repeated twice
+
+With V2PIPE = 0 (default)
+
+    [% PROCESS a | repeat(2) %] # = process block or file named a ~ a
 
 =item Added Virtual Object Namespaces. (TT3)
 
@@ -310,6 +327,12 @@ to virtual methods.
     [% a = qw(a b c); a.1 %] # = b
 
     [% qw/a b c/.2 %] # = c
+
+=item Added regex contructor. (TT3)
+
+    [% "FOO".match(/(foo)/i).0 %] # = FOO
+
+    [% a = /(foo)/i; "FOO".match(a).0 %] # = FOO
 
 =item Allow for scientific notation. (TT3)
 
@@ -373,6 +396,13 @@ Used for Data::Dumpering the passed variable or expression.
 
    [% DUMP a.a %]
 
+=item Added CONFIG directive.
+
+   [% CONFIG
+        ANYCASE   => 1
+        PRE_CHOMP => '-'
+   %]
+
 =item CET does not generate Perl code.
 
 It generates an "opcode" tree.  The opcode tree is an arrayref
@@ -393,7 +423,8 @@ configuration items.
 =item There is no context.
 
 CET provides a context object that mimics the Template::Context
-interface for use by some TT filters, eval perl blocks, and plugins.
+interface for use by some TT filters, eval perl blocks, views,
+and plugins.
 
 =item There is no stash.
 
@@ -408,30 +439,39 @@ perl blocks, and plugins.
 
 CET uses the load_parsed_tree method to get and cache templates.
 
-=item There is no grammar.
+=item There is no parser/grammar.
 
-CET has its own built-in recursive regex based grammar system.
+CET has its own built-in recursive regex based parser and grammar system.
 
-=item There is no VIEW directive.
+CET can actually be substituted in place of the native Template::Parser and
+Template::Grammar in TT by using the Template::Parser::CET module.  This
+module uses the output of parse_tree to generate a TT style compiled perl
+document.
 
 =item The DEBUG directive is more limited.
 
 It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
-=item When debug dirs is on, directives on different lines separated by colons show the line they
-are on rather than a general line range.
+=item CET has better line information
+
+When debug dirs is on, directives on different lines separated
+by colons show the line they are on rather than a general line range.
+
+Parse errors actually know what line and character they occured at.
 
 =back
 
 =head1 VARIABLES
 
-This section discusses how to use variables and expressions in the TT mini-language.
+This section discusses how to use variables and expressions in the TT
+mini-language.
 
-A variable is the most simple construct to insert into the TT mini language.  A variable
-name will look for the matching value inside CGI::Ex::Templates internal stash of variables
-which is essentially a hash reference.  This stash is initially populated by either passing
-a hashref as the second argument to the process method, or by setting the "VARIABLES" or
-"PRE_DEFINE" configuration variables.
+A variable is the most simple construct to insert into the TT mini
+language.  A variable name will look for the matching value inside
+CGI::Ex::Templates internal stash of variables which is essentially a
+hash reference.  This stash is initially populated by either passing a
+hashref as the second argument to the process method, or by setting
+the "VARIABLES" or "PRE_DEFINE" configuration variables.
 
     ### some sample variables
     my %vars = (
@@ -458,8 +498,9 @@ a hashref as the second argument to the process method, or by setting the "VARIA
 
 =head2 GETTING VARIABLES
 
-Once you have variables defined, they can be used directly in the template by using their name
-in the stash.  Or by using the GET directive.
+Once you have variables defined, they can be used directly in the
+template by using their name in the stash.  Or by using the GET
+directive.
 
     [% foo %]
     [% one %]
@@ -471,7 +512,8 @@ Would print when processed:
     1.0
     bar
 
-To access members of a hashref or an arrayref, you can chain together the names using a ".".
+To access members of a hashref or an arrayref, you can chain together
+the names using a ".".
 
     [% some_data.a %]
     [% my_list.0] [% my_list.1 %] [% my_list.-1 %]
@@ -483,8 +525,9 @@ Would print:
     20 21 50
     4
 
-If the value of a variable is a code reference, it will be called.  You can add a set of parenthesis
-and arguments to pass arguments.  Arguments are variables and can be as complex as necessary.
+If the value of a variable is a code reference, it will be called.
+You can add a set of parenthesis and arguments to pass arguments.
+Arguments are variables and can be as complex as necessary.
 
     [% some_code %]
     [% some_code() %]
@@ -498,7 +541,8 @@ Would print:
     You passed me (bar).
     You passed me (1.0, 2, 3).
 
-If the value of a variable is an object, methods can be called using the "." operator.
+If the value of a variable is an object, methods can be called using
+the "." operator.
 
     [% cet %]
 
@@ -526,9 +570,10 @@ Would print:
     31
     3 | 1 | 4 | 5 | 9
 
-It is also possible to "interpolate" variable names using a "$".  This allows for storing
-the name of a variable inside another variable.  If a variable name is a little
-more complex it can be embedded inside of "${" and "}".
+It is also possible to "interpolate" variable names using a "$".  This
+allows for storing the name of a variable inside another variable.  If
+a variable name is a little more complex it can be embedded inside of
+"${" and "}".
 
     [% $vname %]
     [% ${vname} %]
@@ -544,8 +589,9 @@ Would print:
     3234
     3234
 
-In CET it is also possible to embed any expression (non-directive) in "${" and "}"
-and it is possible to use non-integers for array access.  (This is not available in TT2)
+In CET it is also possible to embed any expression (non-directive) in
+"${" and "}" and it is possible to use non-integers for array access.
+(This is not available in TT2)
 
     [% ['a'..'z'].${ 2.3 } %]
     [% {ab => 'AB'}.${ 'a' ~ 'b' } %]
@@ -559,8 +605,8 @@ Would print:
 
 =head2 SETTING VARIABLES.
 
-To define variables during processing, you can use the = operator.  In most cases
-this is the same as using the SET directive.
+To define variables during processing, you can use the = operator.  In
+most cases this is the same as using the SET directive.
 
     [% a = 234 %][% a %]
     [% SET b = "Hello" %][% b %]
@@ -703,6 +749,13 @@ Note: this works in CET and is planned for TT3.
 
 Note: virtual methods can only be used on hash contructs in CET, not in TT.
 
+=item Regex Constructs.
+
+    [% /foo/ %]                              Prints (?-xism:foo)
+    [% a = /(foo)/i %][% "FOO".match(a).0 %] Prints FOO
+
+Note: this works in CET and is planned for TT3.
+
 =head1 EXPRESSIONS
 
 Expressions are one or more variables or literals joined together with
@@ -710,8 +763,8 @@ operators.  An expression can be used anywhere a variable can be used
 with the exception of the variable name in the SET directive, and the
 filename of PROCESS, INCLUDE, WRAPPER, and INSERT.
 
-The following section shows some samples of expressions.  For a full list
-of available operators, please see the section titled OPERATORS.
+The following section shows some samples of expressions.  For a full
+list of available operators, please see the section titled OPERATORS.
 
     [% 1 + 2 %]           Prints 3
     [% 1 + 2 * 3 %]       Prints 7
@@ -738,11 +791,11 @@ are discussed in a later section.
 
 =head2 SCALAR VIRTUAL METHODS AND FILTERS
 
-The following is the list of builtin virtual methods and filters
-that can be called on scalar data types.  In CET and TT3, filters and
-virtual methods are more closely related than in TT2.  In general anywhere a
-virtual method can be used a filter can be used also - and likewise all scalar
-virtual methods can be used as filters.
+The following is the list of builtin virtual methods and filters that
+can be called on scalar data types.  In CET and TT3, filters and
+virtual methods are more closely related than in TT2.  In general
+anywhere a virtual method can be used a filter can be used also - and
+likewise all scalar virtual methods can be used as filters.
 
 In addition to the filters listed below, CET will automatically load
 Template::Filters and use them if Template::Toolkit is installed.
@@ -758,8 +811,10 @@ object (except for true filters such as eval and redirect).
 
 =item '0'
 
-    [% item = 'foo' %][% item.0 %] Returns self.  Allows for scalars to mask as arrays (scalars
-                                   already will, but this allows for more direct access).
+    [% item = 'foo' %][% item.0 %] Returns foo.
+
+Allows for scalars to mask as arrays (scalars already will, but this
+allows for more direct access).
 
 =item chunk
 
@@ -849,6 +904,12 @@ processed separately.
 
     [% item.match("(\w+) (\w+)", 1) %] Same as before - but match globally.
 
+In CGI::Ex::Template and TT3 you can use regular expressions notation as well.
+
+    [% item.match( /(\w+) (\w+)/ ) %] Same as before.
+
+    [% item.match( m{(\w+) (\w+)} ) %] Same as before.
+
 =item null
 
     [% item.null %] Do nothing.
@@ -887,9 +948,17 @@ This is a filter and is not available via the Text virtual object.
 
     [% item.replace("(\w+)", "($1)") %] Surround all words with parenthesis.
 
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.replace(/(\w+)/, "($1)") %] Same as before.
+
 =item search
 
     [% item.search("(\w+)") %] Tests if the given pattern is in the string.
+
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.search(/(\w+)/, "($1)") %] Same as before.
 
 =item size
 
@@ -902,6 +971,10 @@ This is a filter and is not available via the Text virtual object.
     [% item.split("\s+") %] Returns an arrayref from the item split on /\s+/
 
     [% item.split("\s+", 3) %] Returns an arrayref from the item split on /\s+/ splitting until 3 elements are found.
+
+In CGI::Ex::Template and TT3 you may also use normal regular expression notation.
+
+    [% item.split( /\s+/, 3 ) %] Same as before.
 
 =item stderr
 
@@ -928,6 +1001,11 @@ This is a filter and is not available via the Text virtual object.
 =item uri
 
     [% item.uri %] Perform a very basic URI encoding.
+
+=item url
+
+    [% item.url %] Perform a URI encoding - but some characters such
+                   as : and / are left intact.
 
 =back
 
@@ -998,10 +1076,14 @@ Default pattern is %s and the default join string is a space.
 
     [% mylist.push(23) %] Adds an element to the end of the arrayref (the stash is modified).
 
-=item random
+=item pick
 
-    [% mylist.random %] Returns a random item from the list.
-    [% ['a' .. 'z'].random %]
+    [% mylist.pick %] Returns a random item from the list.
+    [% ['a' .. 'z'].pick %]
+
+An additional numeric argument is how many items to return.
+
+    [% ['a' .. 'z'].pick(8).join('') %]
 
 Note: This filter is not available as of TT2.15.
 
@@ -1069,6 +1151,9 @@ Default pattern is "%s\t%s" and the default join string is a newline.
 =item delete
 
     [% myhash.delete('a') %]  Deletes the item from the hash.
+
+Unlink Perl the value is not returned.  Multiple values may be passed
+and represent the keys to be deleted.
 
 =item each
 
@@ -1277,6 +1362,36 @@ Clears any of the content currently generated in the innermost block
 or template.  This can be useful when used in conjunction with the TRY
 statement to clear generated content if an error occurs later.
 
+=item C<CONFIG>
+
+Allow for changing the value of some compile time and runtime configuration
+options.
+
+    [% CONFIG
+        ANYCASE   => 1
+        PRE_CHOMP => '-'
+    %]
+
+The following compile time configuration options may be set:
+
+    ANYCASE
+    INTERPOLATE
+    PRE_CHOMP
+    POST_CHOMP
+    V1DOLLAR
+    V2PIPE
+
+The following runtime configuration options may be set:
+
+    DUMP
+
+If non-named parameters as passed, they will show the current configuration:
+
+   [% CONFIG ANYCASE, PRE_CHOMP %]
+
+   CONFIG ANYCASE = undef
+   CONFIG PRE_CHOMP = undef
+
 =item C<DEBUG>
 
 Used to reset the DEBUG_FORMAT configuration variable, or to turn
@@ -1298,13 +1413,15 @@ defined or was zero length.
 
 =item C<DUMP>
 
-This is not provided in TT.  DUMP inserts a Data::Dumper printout
-of the variable or expression.  If no argument is passed it will
-dump the entire contents of the current variable stash (with
-private keys removed.
+DUMP inserts a Data::Dumper printout of the variable or expression.
+If no argument is passed it will dump the entire contents of the
+current variable stash (with private keys removed).
 
-If the template is being processed in a web request, DUMP will html
-encode the DUMP automatically.
+The output also includes the current file and line number that the
+DUMP directive was called from.
+
+See the DUMP configuration item for ways to customize and control
+the output available to the DUMP directive.
 
     [% DUMP %] # dumps everything
 
@@ -1336,7 +1453,8 @@ TODO - enumerate the at least 7 ways to pass and use filters.
 Alias for the FILTER directive.  Note that | is similar to the
 '.' in CGI::Ex::Template.  Therefore a pipe cannot be used directly after a
 variable name in some situations (the pipe will act only on that variable).
-This is the behavior employed by TT3.
+This is the behavior employed by TT3.  To get the TT2 behavior for a PIPE, use
+the V2PIPE configuration item.
 
 =item C<FINAL>
 
@@ -1670,19 +1788,26 @@ The named tags are (duplicated from TT):
     metatext  => ['%%',     '%%'    ], # Text::MetaText
     php       => ['<\?',    '\?>'   ], # PHP
     star      => ['\[\*',   '\*\]'  ], # TT alternate
+    template  => ['\[%',    '%\]'   ], # Normal Template Toolkit
     template1 => ['[\[%]%', '%[%\]]'], # allow TT1 style
+    tt2       => ['\[%',    '%\]'   ], # TT2
 
 If custom tags are supplied, by default they are escaped using
-quotemeta.  If a third argument is given and is equal to "unquoted",
-then no quoting takes place on the new tags.
+quotemeta.  You may also pass explicitly quoted strings,
+or regular expressions as arguments as well (if your
+regex begins with a ', ", or / you must quote it.
 
     [% TAGS [<] [>] %]          matches "[<] tag [>]"
 
-    [% TAGS [<] [>] unquoted %] matches "< tag >"
+    [% TAGS '[<]' '[>]' %]      matches "[<] tag [>]"
+
+    [% TAGS "[<]" "[>]" %]      matches "[<] tag [>]"
+
+    [% TAGS /[<]/ /[>]/ %]      matches "< tag >"
 
     [% TAGS ** ** %]            matches "** tag **"
 
-    [% TAGS ** ** unquoted %]   Throws an exception.
+    [% TAGS /**/ /**/ %]        Throws an exception.
 
 =item C<THROW>
 
@@ -1859,6 +1984,14 @@ Would print:
 See the PLUGIN_BASE, and PLUGINS configuration items.
 
 See the documentation for Template::Manual::Plugins.
+
+=item C<VIEW>
+
+Implement a TT style view.  For more information, please
+see the Template::View documentation.  This DIRECTIVE
+will correctly parse the arguments and then pass them
+along to a newly created Template::View object.  It
+will fail if Template::View can not be found.
 
 =item C<WHILE>
 
@@ -2180,6 +2313,12 @@ This operator is not used in TT.  It is used internally
 by CGI::Ex::Template to delay the creation of an array until the
 execution of the compiled template.
 
+=item C<qr>
+
+This operator is not used in TT.  It is used internally
+by CGI::Ex::Template to store a regular expression and its options.
+It will return a compiled Regexp object when compiled.
+
 =back
 
 
@@ -2379,6 +2518,68 @@ The name of a default template file to use if the passed one is not found.
 
 String to use to split INCLUDE_PATH with.  Default is :.  It is more
 straight forward to just send INCLUDE_PATH an arrayref of paths.
+
+=item DUMP
+
+Configures the behavior of the DUMP tag.  May be set to 0, a hashref,
+or another true value.  Default is true.
+
+If set to 0, all DUMP directives will do nothing.  This is useful if
+you would like to turn off the DUMP directives under some environments.
+
+IF set to a true value (or undefined) then DUMP directives will operate.
+
+If set to a hashref, the values of the hash can be used to configure
+the operation of the DUMP directives.  The following are the values
+that can be set in this hash.
+
+=over 4
+
+=item EntireStash
+
+Default 1.  If set to 0, then the DUMP directive will not print the
+entire contents of the stash when a DUMP directive is called without
+arguments.
+
+=item handler
+
+Defaults to an internal coderef.  If set to a coderef, the DUMP directive will pass the
+arguments to be dumped and expects a string with the dumped data.  This
+gives complete control over the dump process.
+
+Note 1: The default handler makes sure that values matching the
+private variable regex are not included.  If you install your own handler,
+you will need to take care of these variables if you intend for them
+to not be shown.
+
+Note 2: If you would like the name of the variable to be dumped, include
+the string '$VAR1' and the DUMP directive will interpolate the value.  For
+example, to dump all output as YAML - you could do the following:
+
+    DUMP => {
+       handler => sub {
+           require YAML;
+           return "\$VAR1 =\n".YAML::Dump(shift);
+       },
+    }
+
+=item header
+
+Default 1.  Controls whether a header is printed for each DUMP directive.
+The header contains the file and line number the DUMP directive was
+called from.  If set to 0 the headers are disabled.
+
+=item html
+
+Defaults to 1 if $ENV{'REQUEST_METHOD'} is set - 0 otherwise.  If set to
+1, then the output of the DUMP directive is passed to the html filter
+and encased in "pre" tags.  If set to 0 no html encoding takes place.
+
+=item Sortkeys, Useqq, Ident, Pad, etc
+
+Any of the Data::Dumper configuration items may be passed.
+
+=back
 
 =item END_TAG
 
@@ -2610,6 +2811,31 @@ following is a basic table of changes invoked by using V1DOLLAR.
    "Text: ${foo}"       "Text: ${foo}"
    "Text: ${$foo}"      "Text: ${foo}"
 
+=item V2PIPE
+
+Restores the behavior of the pipe operator to be compatible with TT2.
+
+With V2PIPE = 1
+
+    [%- BLOCK a %]b is [% b %]
+    [% END %]
+    [%- PROCESS a b => 237 | repeat(2) %]
+
+    # output of block "a" with b set to 237 is passed to the repeat(2) filter
+
+    b is 237
+    b is 237
+
+With V2PIPE = 0 (default)
+
+    [%- BLOCK a %]b is [% b %]
+    [% END %]
+    [% PROCESS a b => 237 | repeat(2) %]
+
+    # b set to 237 repeated twice, and b passed to block "a"
+
+    b is 237237
+
 =item VARIABLES
 
 A hashref of variables to initialize the template stash with.  These
@@ -2702,12 +2928,13 @@ $DIRECTIVES hashref.
 
 =head1 VARIABLE PARSE TREE
 
-CGI::Ex::Template parses templates into an tree of operations.  Even
-variable access is parsed into a tree.  This is done in a manner
-somewhat similar to the way that TT operates except that nested
-variables such as foo.bar|baz contain the '.' or '|' in between each
-name level.  Operators are parsed and stored as part of the variable (it
-may be more appropriate to say we are parsing a term or an expression).
+CGI::Ex::Template parses templates into an tree of operations (an AST
+or abstract syntax tree).  Even variable access is parsed into a tree.
+This is done in a manner somewhat similar to the way that TT operates
+except that nested variables such as foo.bar|baz contain the '.' or
+'|' in between each name level.  Operators are parsed and stored as
+part of the variable (it may be more appropriate to say we are parsing
+a term or an expression).
 
 The following table shows a variable or expression and the corresponding parsed tree
 (this is what the parse_expr method would return).
@@ -2721,6 +2948,8 @@ The following table shows a variable or expression and the corresponding parsed 
     one.${two().three} [ 'one',  0, '.', ['two', [], '.', 'three', 0], 0]
     2.34               2.34
     "one"              "one"
+    1 + 2              [ [ undef, '+', 1, 2 ], 0]
+    a + b              [ [ undef, '+', ['a', 0], ['b', 0] ], 0 ]
     "one"|length       [ [ undef, '~', "one" ], 0, '|', 'length', 0 ]
     "one $a two"       [ [ undef, '~', 'one ', ['a', 0], ' two' ], 0 ]
     [0, 1, 2]          [ [ undef, '[]', 0, 1, 2 ], 0 ]
@@ -2729,8 +2958,6 @@ The following table shows a variable or expression and the corresponding parsed 
     {a  => 'b'}        [ [ undef, '{}', 'a', 'b' ], 0 ]
     {a  => 'b'}.size   [ [ undef, '{}', 'a', 'b' ], 0, '.', 'size', 0 ]
     {$a => b}          [ [ undef, '{}', ['a', 0], ['b', 0] ], 0 ]
-    1 + 2              [ [ undef, '+', 1, 2 ], 0]
-    a + b              [ [ undef, '+', ['a', 0], ['b', 0] ], 0 ]
     a * (b + c)        [ [ undef, '*', ['a', 0], [ [undef, '+', ['b', 0], ['c', 0]], 0 ]], 0 ]
     (a + b)            [ [ undef, '+', ['a', 0], ['b', 0] ]], 0 ]
     (a + b) * c        [ [ undef, '*', [ [undef, '+', ['a', 0], ['b', 0] ], 0 ], ['c', 0] ], 0 ]
@@ -2894,7 +3121,7 @@ Used to get debug info on a directive if DEBUG_DIRS is set.
 
 =item C<filter_*>
 
-Methods by these names implement filters that are more than one line.
+Methods by these names implement filters that are more complex than one liners.
 
 =item C<get_line_number_by_index>
 
@@ -2939,7 +3166,7 @@ by the pseudo context object and may disappear at some point.
 
 =item C<vmethod_*>
 
-Methods by these names implement virtual methods that are more than one line.
+Methods by these names implement virtual methods that are more complex than oneliners.
 
 =back
 
@@ -2947,5 +3174,9 @@ Methods by these names implement virtual methods that are more than one line.
 =head1 AUTHOR
 
 Paul Seamons <paul at seamons dot com>
+
+=head1 LICENSE
+
+This module may be distributed under the same terms as Perl itself.
 
 =cut
