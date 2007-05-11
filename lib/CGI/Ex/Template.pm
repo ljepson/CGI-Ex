@@ -1,8 +1,5 @@
 package CGI::Ex::Template;
 
-#STAT_TTL
-#memory leak in USE
-
 ###----------------------------------------------------------------###
 #  See the perldoc in CGI/Ex/Template.pod
 #  Copyright 2007 - Paul Seamons                                     #
@@ -39,21 +36,20 @@ use vars qw($VERSION
             $WHILE_MAX
             $EXTRA_COMPILE_EXT
             $DEBUG
+            $STAT_TTL
 
             @CONFIG_COMPILETIME
             @CONFIG_RUNTIME
             );
 
 BEGIN {
-    $VERSION = '2.11';
+    $VERSION = '2.12';
 
     $PACKAGE_EXCEPTION   = 'CGI::Ex::Template::Exception';
     $PACKAGE_ITERATOR    = 'CGI::Ex::Template::Iterator';
     $PACKAGE_CONTEXT     = 'CGI::Ex::Template::_Context';
     $PACKAGE_STASH       = 'CGI::Ex::Template::_Stash';
     $PACKAGE_PERL_HANDLE = 'CGI::Ex::Template::EvalPerlHandle';
-    $MAX_EVAL_RECURSE    = 50;
-    $MAX_MACRO_RECURSE   = 50;
 
     $TAGS = {
         asp       => ['<%',     '%>'    ], # ASP
@@ -221,49 +217,46 @@ BEGIN {
     ### setup the operator parsing
     $OPERATORS = [
         # type      precedence symbols              action (undef means play_operator will handle)
-        ['prefix',  99,        ['\\'],              undef                                       ],
-        ['postfix', 98,        ['++'],              undef                                       ],
-        ['postfix', 98,        ['--'],              undef                                       ],
-        ['prefix',  97,        ['++'],              undef                                       ],
-        ['prefix',  97,        ['--'],              undef                                       ],
-        ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]                  } ],
-        ['prefix',  93,        ['!'],               sub {   ! $_[0]                           } ],
+        ['prefix',  99,        ['\\'],              undef                       ],
+        ['postfix', 98,        ['++'],              undef                       ],
+        ['postfix', 98,        ['--'],              undef                       ],
+        ['prefix',  97,        ['++'],              undef                       ],
+        ['prefix',  97,        ['--'],              undef                       ],
+        ['right',   96,        ['**', 'pow'],       sub {     $_[0] ** $_[1]  } ],
+        ['prefix',  93,        ['!'],               sub {   ! $_[0]           } ],
         ['prefix',  93,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]                  } ],
-        ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]                  } ],
-        ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1])                 } ],
-        ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]                  } ],
-        ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]                  } ],
+        ['left',    90,        ['*'],               sub {     $_[0] *  $_[1]  } ],
+        ['left',    90,        ['/'],               sub {     $_[0] /  $_[1]  } ],
+        ['left',    90,        ['div', 'DIV'],      sub { int($_[0] /  $_[1]) } ],
+        ['left',    90,        ['%', 'mod', 'MOD'], sub {     $_[0] %  $_[1]  } ],
+        ['left',    85,        ['+'],               sub {     $_[0] +  $_[1]  } ],
         ['left',    85,        ['-'],               sub { @_ == 1 ? 0 - $_[0] : $_[0] - $_[1] } ],
-        ['left',    85,        ['~', '_'],          undef                                       ],
-        ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]                  } ],
-        ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]                  } ],
-        ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]                  } ],
-        ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]                  } ],
-        ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]                  } ],
-        ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]                  } ],
-        ['none',    80,        ['le'],              sub {     $_[0] le $_[1]                  } ],
-        ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]                  } ],
-        ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]                  } ],
-        ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]                  } ],
-        ['left',    70,        ['&&'],              undef                                       ],
-        ['right',   65,        ['||'],              undef                                       ],
-        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]                  } ],
-        ['ternary', 55,        ['?', ':'],          undef                                       ],
-        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]                  } ],
-        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]                  } ],
-        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]                  } ],
-        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]                  } ],
-        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]                  } ],
-        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]                  } ],
-        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]                  } ],
-        ['assign',  52,        ['='],               undef                                       ],
-        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]                           } ],
-        ['left',    45,        ['and', 'AND'],      undef                                       ],
-        ['right',   40,        ['or', 'OR'],        undef                                       ],
-#        ['',         0,        ['{}'],              undef                                       ],
-#        ['',         0,        ['[]'],              undef                                       ],
-#        ['',         0,        ['qr'],              undef                                       ],
+        ['left',    85,        ['~', '_'],          undef                       ],
+        ['none',    80,        ['<'],               sub {     $_[0] <  $_[1]  } ],
+        ['none',    80,        ['>'],               sub {     $_[0] >  $_[1]  } ],
+        ['none',    80,        ['<='],              sub {     $_[0] <= $_[1]  } ],
+        ['none',    80,        ['>='],              sub {     $_[0] >= $_[1]  } ],
+        ['none',    80,        ['lt'],              sub {     $_[0] lt $_[1]  } ],
+        ['none',    80,        ['gt'],              sub {     $_[0] gt $_[1]  } ],
+        ['none',    80,        ['le'],              sub {     $_[0] le $_[1]  } ],
+        ['none',    80,        ['ge'],              sub {     $_[0] ge $_[1]  } ],
+        ['none',    75,        ['==', 'eq'],        sub {     $_[0] eq $_[1]  } ],
+        ['none',    75,        ['!=', 'ne'],        sub {     $_[0] ne $_[1]  } ],
+        ['left',    70,        ['&&'],              undef                       ],
+        ['right',   65,        ['||'],              undef                       ],
+        ['none',    60,        ['..'],              sub {     $_[0] .. $_[1]  } ],
+        ['ternary', 55,        ['?', ':'],          undef                       ],
+        ['assign',  53,        ['+='],              sub {     $_[0] +  $_[1]  } ],
+        ['assign',  53,        ['-='],              sub {     $_[0] -  $_[1]  } ],
+        ['assign',  53,        ['*='],              sub {     $_[0] *  $_[1]  } ],
+        ['assign',  53,        ['/='],              sub {     $_[0] /  $_[1]  } ],
+        ['assign',  53,        ['%='],              sub {     $_[0] %  $_[1]  } ],
+        ['assign',  53,        ['**='],             sub {     $_[0] ** $_[1]  } ],
+        ['assign',  53,        ['~=', '_='],        sub {     $_[0] .  $_[1]  } ],
+        ['assign',  52,        ['='],               undef                       ],
+        ['prefix',  50,        ['not', 'NOT'],      sub {   ! $_[0]           } ],
+        ['left',    45,        ['and', 'AND'],      undef                       ],
+        ['right',   40,        ['or', 'OR'],        undef                       ],
     ];
     $OP          = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] ne 'prefix' } @$OPERATORS}; # all non-prefix
     $OP_PREFIX   = {map {my $ref = $_; map {$_ => $ref}      @{$ref->[2]}} grep {$_->[0] eq 'prefix' } @$OPERATORS};
@@ -295,7 +288,10 @@ BEGIN {
     $QR_PRIVATE   = qr/^[_.]/;
 
     $WHILE_MAX    = 1000;
-    $EXTRA_COMPILE_EXT = '.sto2';
+    $EXTRA_COMPILE_EXT = '.sto';
+    $MAX_EVAL_RECURSE  = 50;
+    $MAX_MACRO_RECURSE = 50;
+    $STAT_TTL          ||= 1;
 
     @CONFIG_COMPILETIME = qw(ANYCASE INTERPOLATE PRE_CHOMP POST_CHOMP V1DOLLAR V2PIPE);
     @CONFIG_RUNTIME     = qw(DUMP);
@@ -387,6 +383,7 @@ sub load_parsed_tree {
     return if ! defined $file;
 
     my $doc = {name => $file};
+    my $ref = $self->{'_documents'}->{$file};
 
     ### looks like a string reference
     if (ref $file) {
@@ -395,12 +392,11 @@ sub load_parsed_tree {
         $doc->{'_is_str_ref'} = 1;
 
     ### looks like a previously cached-in-memory document
-    } elsif ($self->{'_documents'}->{$file}
-             && (   ($self->{'_documents'}->{$file}->{'_cache_time'} == time) # don't stat more than once a second
-                 || ($self->{'_documents'}->{$file}->{'modtime'}
-                     == (stat $self->{'_documents'}->{$file}->{'_filename'})[9]))) {
+    } elsif ($ref
+             && (   time - $ref->{'cache_time'} < ($self->{'STAT_TTL'} || $STAT_TTL) # don't stat more than once a second
+                 || $ref->{'modtime'} == (stat $ref->{'_filename'})[9]               # otherwise see if the file was modified
+                    )) {
         $doc = $self->{'_documents'}->{$file};
-        $doc->{'_cache_time'} = time;
         return $doc;
 
     ### looks like a block name of some sort
@@ -420,6 +416,13 @@ sub load_parsed_tree {
         $doc->{'_tree'} = $block->{'_tree'} || $self->throw('block', "Invalid block definition (missing tree)");
         return $doc;
 
+    ### handle cached not_founds
+    } elsif ($self->{'_not_found'}->{$file}
+             && ((time - $self->{'_not_found'}->{$file}->{'cache_time'}
+                  < ($self->{'NEGATIVE_STAT_TTL'} || $self->{'STAT_TTL'} || $STAT_TTL))  # negative cache for a second
+                 || do { delete $self->{'_not_found'}->{$file}; 0 } # clear cache on failure
+                 )) {
+        die $self->{'_not_found'}->{$file}->{'exception'};
 
     ### go and look on the file system
     } else {
@@ -446,10 +449,19 @@ sub load_parsed_tree {
                         last;
                     }
                 }
-                die $err if ! $doc->{'_tree'};
+                $err = '' if ! $doc->{'_tree'};
             } elsif ($self->{'DEFAULT'}) {
-                $doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) } || die $err;
-            } else {
+                $err = '' if ($doc->{'_filename'} = eval { $self->include_filename($self->{'DEFAULT'}) });
+            }
+            if ($err) {
+                ### cache the negative error
+                if (! defined($self->{'NEGATIVE_STAT_TTL'}) || $self->{'NEGATIVE_STAT_TTL'}) {
+                    $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+                    $self->{'_not_found'}->{$file} = {
+                        cache_time => time,
+                        exception  => $self->exception($err->type, $err->info." (cached)"),
+                    };
+                }
                 die $err;
             }
         }
@@ -497,14 +509,14 @@ sub load_parsed_tree {
     ### cache parsed_tree in memory unless asked not to do so
     if (! $doc->{'_is_str_ref'} && (! defined($self->{'CACHE_SIZE'}) || $self->{'CACHE_SIZE'})) {
         $self->{'_documents'}->{$file} ||= $doc;
-        $doc->{'_cache_time'} = time;
+        $doc->{'cache_time'} = time;
 
         ### allow for config option to keep the cache size down
         if ($self->{'CACHE_SIZE'}) {
             my $all = $self->{'_documents'};
             if (scalar(keys %$all) > $self->{'CACHE_SIZE'}) {
                 my $n = 0;
-                foreach my $file (sort {$all->{$b}->{'_cache_time'} <=> $all->{$a}->{'_cache_time'}} keys %$all) {
+                foreach my $file (sort {$all->{$b}->{'cache_time'} <=> $all->{$a}->{'cache_time'}} keys %$all) {
                     delete($all->{$file}) if ++$n > $self->{'CACHE_SIZE'};
                 }
             }
@@ -1445,6 +1457,9 @@ sub play_expr {
 
     ### determine the top level of this particular variable access
     my $ref;
+    use CGI::Ex::Dump qw(debug dex_trace);
+    debug dex_trace
+        if ref $var ne 'ARRAY';
     my $name = $var->[$i++];
     my $args = $var->[$i++];
     warn "play_expr: begin \"$name\"\n" if trace;
@@ -2610,10 +2625,10 @@ sub play_THROW {
 
     $name = $self->play_expr($name);
 
-    my $named = shift @$args;
-    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    my ($named, @args) = @$args;
+    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
-    my @args = $args ? map { $self->play_expr($_) } @$args : ();
+    @args = map { $self->play_expr($_) } @args;
     $self->throw($name, \@args, $node);
 }
 
@@ -2726,8 +2741,8 @@ sub play_USE {
     my @var = map {($_, 0, '.')} split /(?:\.|::)/, $var;
     pop @var; # remove the trailing '.'
 
-    my $named = shift @$args;
-    push @$args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
+    my ($named, @args) = @$args;
+    push @args, $named if ! $self->is_empty_named_args($named); # add named args back on at end - if there are some
 
     ### look for a plugin_base
     my $BASE = $self->{'PLUGIN_BASE'} || 'Template::Plugin'; # I'm not maintaining plugins - leave that to TT
@@ -2744,10 +2759,9 @@ sub play_USE {
         if ($self->{'PLUGIN_FACTORY'}->{$module} || eval {require $require}) {
             my $shape   = $package->load;
             my $context = $self->context;
-            my @args    = $args ? map { $self->play_expr($_) } @$args : ();
-            $obj = $shape->new($context, @args);
+            $obj = $shape->new($context, map { $self->play_expr($_) } @args);
         } elsif (lc($module) eq 'iterator') { # use our iterator if none found (TT's works just fine)
-            $obj = $PACKAGE_ITERATOR->new($args ? $self->play_expr($args->[0]) : []);
+            $obj = $PACKAGE_ITERATOR->new($args[0]);
         } elsif (my @packages = grep {lc($package) eq lc($_)} @{ $self->list_plugins({base => $base}) }) {
             foreach my $package (@packages) {
                 my $require = "$package.pm";
@@ -2755,15 +2769,13 @@ sub play_USE {
                 eval {require $require} || next;
                 my $shape   = $package->load;
                 my $context = $self->context;
-                my @args    = $args ? map { $self->play_expr($_) } @$args : ();
-                $obj = $shape->new($context, @args);
+                $obj = $shape->new($context, map { $self->play_expr($_) } @args);
             }
         } elsif ($self->{'LOAD_PERL'}) {
             my $require = "$module.pm";
             $require =~ s|::|/|g;
             if (eval {require $require}) {
-                my @args = $args ? map { $self->play_expr($_) } @$args : ();
-                $obj = $module->new(@args);
+                $obj = $module->new(map { $self->play_expr($_) } @args);
             }
         }
     }
@@ -2788,7 +2800,6 @@ sub parse_VIEW {
 
     return $ref;
 }
-#sub parse_VIEW { $DIRECTIVES->{'PROCESS'}->[0]->(@_) }
 
 sub play_VIEW {
     my ($self, $ref, $node, $out_ref) = @_;
@@ -3012,44 +3023,80 @@ sub process {
         my $copy = {%$var2, %$var1, %$swap};
 
         local $self->{'BLOCKS'} = $blocks = {%$blocks}; # localize blocks - but save a copy to possibly restore
+        local $self->{'_template'};
 
         delete $self->{'_debug_off'};
         delete $self->{'_debug_format'};
 
         ### handle pre process items that go before every document
+        my $pre = '';
         if ($self->{'PRE_PROCESS'}) {
+            $self->_load_template_meta($content);
             foreach my $name (@{ $self->split_paths($self->{'PRE_PROCESS'}) }) {
+                $self->_process($name, $copy, \$pre);
+            }
+        }
+
+        ### process the central file now - catching errors to allow for the ERROR config
+        eval {
+            ### handle the PROCESS config - which loads another template in place of the real one
+            if (exists $self->{'PROCESS'}) {
+                $self->_load_template_meta($content);
+                foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
+                    next if ! length $name;
+                    $self->_process($name, $copy, \$output);
+                }
+
+                ### handle "normal" content
+            } else {
+                local $self->{'_start_top_level'} = 1;
+                $self->_process($content, $copy, \$output);
+            }
+        };
+
+        ### catch errors with ERROR config
+        if (my $err = $@) {
+            $err = $self->exception('undef', $err) if ref($err) !~ /Template::Exception$/;
+            die $err if $err->type =~ /stop|return/;
+            my $catch = $self->{'ERRORS'} || $self->{'ERROR'} || die $err;
+            $catch = {default => $catch} if ! ref $catch;
+            my $type = $err->type;
+            my $last_found;
+            my $file;
+            foreach my $name (keys %$catch) {
+                my $_name = (! defined $name || lc($name) eq 'default') ? '' : $name;
+                if ($type =~ / ^ \Q$_name\E \b /x
+                    && (! defined($last_found) || length($last_found) < length($_name))) { # more specific wins
+                    $last_found = $_name;
+                    $file       = $catch->{$name};
+                }
+            }
+
+            ### found error handler - try it out
+            if (defined $file) {
+                $output = '';
+                local $copy->{'error'} = local $copy->{'e'} = $err;
+                $self->_process($file, $copy, \$output);
+            }
+        }
+
+        ### handle wrapper directives
+        if (exists $self->{'WRAPPER'}) {
+            $self->_load_template_meta($content);
+            foreach my $name (reverse @{ $self->split_paths($self->{'WRAPPER'}) }) {
+                next if ! length $name;
+                local $copy->{'content'} = $output;
                 my $out = '';
                 $self->_process($name, $copy, \$out);
-                $output = $out . $output;
+                $output = $out;
             }
         }
 
-        ### handle the process config - which loads a template in place of the real one
-        if (exists $self->{'PROCESS'}) {
-            ### load the meta data for the top document
-            my $doc  = $self->load_parsed_tree($content) || {};
-            my $meta = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
-                ? $doc->{'_tree'}->[0]->[3] : {};
-
-            local $self->{'_template'} = $doc;
-            @{ $doc }{keys %$meta} = values %$meta;
-
-            ### process any other templates
-            foreach my $name (@{ $self->split_paths($self->{'PROCESS'}) }) {
-                next if ! length $name;
-                $self->_process($name, $copy, \$output);
-            }
-
-        ### handle "normal" content
-        } else {
-            local $self->{'_start_top_level'} = 1;
-            $self->_process($content, $copy, \$output);
-        }
-
+        $output = $pre . $output if length $pre;
 
         ### handle post process items that go after every document
         if ($self->{'POST_PROCESS'}) {
+            $self->_load_template_meta($content);
             foreach my $name (@{ $self->split_paths($self->{'POST_PROCESS'}) }) {
                 $self->_process($name, $copy, \$output);
             }
@@ -3131,6 +3178,24 @@ sub DEBUG {
     my $self = shift;
     print STDERR "DEBUG: ", @_;
 }
+
+sub _load_template_meta {
+    my $self = shift;
+    return if $self->{'_template'}; # only do once as need
+
+    ### load the meta data for the top document
+    ### this is needed by some of the custom handlers such as PRE_PROCESS and POST_PROCESS
+    my $content = shift;
+    my $doc     = $self->{'_template'} = $self->load_parsed_tree($content) || {};
+    my $meta    = ($doc->{'_tree'} && ref($doc->{'_tree'}->[0]) && $doc->{'_tree'}->[0]->[0] eq 'META')
+        ? $doc->{'_tree'}->[0]->[3] : {};
+
+    $self->{'_template'} = $doc;
+    @{ $doc }{keys %$meta} = values %$meta;
+
+    return;
+}
+
 
 ###----------------------------------------------------------------###
 

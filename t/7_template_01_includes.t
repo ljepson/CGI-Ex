@@ -9,12 +9,12 @@
 use vars qw($module $is_tt);
 BEGIN {
     $module = 'CGI::Ex::Template';
-    #$module = 'Template';
+#    $module = 'Template';
     $is_tt = $module eq 'Template';
 };
 
 use strict;
-use Test::More tests => 25 - ($is_tt ? 6 : 0);
+use Test::More tests => (! $is_tt) ? 93 : 83;
 use Data::Dumper qw(Dumper);
 use constant test_taint => 0 && eval { require Taint::Runtime };
 
@@ -59,14 +59,14 @@ sub process_ok { # process the value and say if it was ok
 my $foo_template = "$test_dir/foo.tt";
 END { unlink $foo_template };
 open(my $fh, ">$foo_template") || die "Couldn't open $foo_template: $!";
-print $fh "([% INCLUDE bar.tt %])";
+print $fh "([% template.foo %][% INCLUDE bar.tt %])";
 close $fh;
 
 ###
 my $bar_template = "$test_dir/bar.tt";
 END { unlink $bar_template };
 open($fh, ">$bar_template") || die "Couldn't open $bar_template: $!";
-print $fh "BAR";
+print $fh "[% blue %]BAR";
 close $fh;
 
 my $baz_template = "$test_dir/baz.tt";
@@ -79,22 +79,63 @@ close $fh;
 my $wrap_template = "$test_dir/wrap.tt";
 END { unlink $wrap_template };
 open($fh, ">$wrap_template") || die "Couldn't open $wrap_template: $!";
-print $fh "Hi[% content %]there";
+print $fh "Hi[% baz; template.foo; baz = 'wrap' %][% content %]there";
 close $fh;
 
-###----------------------------------------------------------------###
-### INSERT
+###
+my $meta_template = "$test_dir/meta.tt";
+END { unlink $meta_template };
+open($fh, ">$meta_template") || die "Couldn't open $meta_template: $!";
+print $fh "[% META bar='meta.tt' %]Metafoo([% component.foo %]) Metabar([% component.bar %])";
+close $fh;
 
-process_ok("([% INSERT bar.tt %])" => '(BAR)');
-process_ok("([% SET file = 'bar.tt' %][% INSERT \$file %])" => '(BAR)');
-process_ok("([% SET file = 'bar.tt' %][% INSERT \${file} %])" => '(BAR)') if ! $is_tt;
-process_ok("([% SET file = 'bar.tt' %][% INSERT \"\$file\" %])" => '(BAR)');
-process_ok("([% SET file = 'bar' %][% INSERT \"\$file.tt\" %])" => '(BAR)') if ! $is_tt;
+###
+my $catch_template = "$test_dir/catch.tt";
+END { unlink $catch_template };
+open($fh, ">$catch_template") || die "Couldn't open $catch_template: $!";
+print $fh "Error ([% error.type %]) - ([% error.info %])";
+close $fh;
+
+###
+my $catch2_template = "$test_dir/catch2.tt";
+END { unlink $catch2_template };
+open($fh, ">$catch2_template") || die "Couldn't open $catch2_template: $!";
+print $fh "Error2 ([% error.type %]) - ([% error.info %])";
+close $fh;
+
+###
+my $die_template = "$test_dir/die.tt";
+END { unlink $die_template };
+open($fh, ">$die_template") || die "Couldn't open $die_template: $!";
+print $fh "[% THROW bing 'blang' %])";
+close $fh;
+
+###
+my $config_template = "$test_dir/config.tt";
+END { unlink $config_template };
+open($fh, ">$config_template") || die "Couldn't open $config_template: $!";
+print $fh "[% CONFIG DUMP => {html => 1} %][% DUMP foo %]";
+close $fh;
+
 
 ###----------------------------------------------------------------###
-### INCLUDE
+print "### INSERT ###########################################################\n";
+
+process_ok("([% INSERT bar.tt %])" => '([% blue %]BAR)');
+process_ok("([% SET file = 'bar.tt' %][% INSERT \$file %])"     => '([% blue %]BAR)');
+process_ok("([% SET file = 'bar.tt' %][% INSERT \${file} %])"   => '([% blue %]BAR)') if ! $is_tt;
+process_ok("([% SET file = 'bar.tt' %][% INSERT \"\$file\" %])" => '([% blue %]BAR)');
+process_ok("([% SET file = 'bar' %][% INSERT \"\$file.tt\" %])" => '([% blue %]BAR)') if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### INCLUDE ##########################################################\n";
 
 process_ok("([% INCLUDE bar.tt %])" => '(BAR)');
+process_ok("[% PROCESS foo.tt %]" => '(BAR)');
+process_ok("[% PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% META foo = 'string'; PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% PROCESS meta.tt %][% template.bar %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% META foo = 'meta'; PROCESS foo.tt %]" => '(metaBAR)');
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \$file %])" => '(BAR)');
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \${file} %])" => '(BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% INCLUDE \"\$file\" %])" => '(BAR)');
@@ -105,9 +146,14 @@ process_ok("([% INCLUDE baz.tt %])[% baz %]" => '(42)');
 process_ok("[% SET baz = 21 %]([% INCLUDE baz.tt %])[% baz %]" => '(42)21');
 
 ###----------------------------------------------------------------###
-### PROCESS
+print "### PROCESS ##########################################################\n";
 
 process_ok("([% PROCESS bar.tt %])" => '(BAR)');
+process_ok("[% PROCESS foo.tt %]" => '(BAR)');
+process_ok("[% PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% META foo = 'string'; PROCESS meta.tt %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% PROCESS meta.tt %][% template.bar %]" => 'Metafoo() Metabar(meta.tt)');
+process_ok("[% META foo = 'meta'; PROCESS foo.tt %]" => '(metaBAR)');
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \$file %])" => '(BAR)');
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \${file} %])" => '(BAR)') if ! $is_tt;
 process_ok("([% SET file = 'bar.tt' %][% PROCESS \"\$file\" %])" => '(BAR)');
@@ -118,7 +164,105 @@ process_ok("([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 process_ok("[% SET baz = 21 %]([% PROCESS baz.tt %])[% baz %]" => '(42)42');
 
 ###----------------------------------------------------------------###
-### WRAPPER
+print "### WRAPPER ##########################################################\n";
 
 process_ok("([% WRAPPER wrap.tt %])" => '');
 process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)');
+process_ok("([% WRAPPER wrap.tt %] ([% baz %]) [% END %])" => '(Hi () there)');
+process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(HiBAZ one there)', {baz => 'BAZ'});
+process_ok("([% WRAPPER wrap.tt %] ([% baz; baz='-local' %]) [% END %][% baz %])" => '(Hi-local () there-local)');
+process_ok("([% WRAPPER wrap.tt %][% META foo='BLAM' %] [% END %])" => '(HiBLAM there)');
+
+###----------------------------------------------------------------###
+print "### CONFIG PRE_PROCESS ###############################################\n";
+
+process_ok("Foo" => "BARFoo",      {tt_config => [PRE_PROCESS => 'bar.tt']});
+process_ok("Foo" => "BARFoo",      {tt_config => [PRE_PROCESS => ['bar.tt']]});
+process_ok("Foo" => "(BAR)BARFoo", {tt_config => [PRE_PROCESS => ['foo.tt', 'bar.tt']]});
+process_ok("Foo" => "BlueBARFoo",  {tt_config => [PRE_PROCESS => 'bar.tt'], blue => 'Blue'});
+process_ok("Foo[% blue='Blue' %]" => "BARFoo", {tt_config => [PRE_PROCESS => 'bar.tt']});
+process_ok("Foo[% META foo='meta' %]" => "(metaBAR)Foo", {tt_config => [PRE_PROCESS => 'foo.tt']});
+process_ok("([% WRAPPER wrap.tt %] one [% END %])" => 'BAR(Hi one there)', {tt_config => [PRE_PROCESS => 'bar.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG POST_PROCESS ##############################################\n";
+
+process_ok("Foo" => "FooBAR",      {tt_config => [POST_PROCESS => 'bar.tt']});
+process_ok("Foo" => "FooBAR",      {tt_config => [POST_PROCESS => ['bar.tt']]});
+process_ok("Foo" => "Foo(BAR)BAR", {tt_config => [POST_PROCESS => ['foo.tt', 'bar.tt']]});
+process_ok("Foo" => "FooBlueBAR",  {tt_config => [POST_PROCESS => 'bar.tt'], blue => 'Blue'});
+process_ok("Foo[% blue='Blue' %]" => "FooBlueBAR", {tt_config => [POST_PROCESS => 'bar.tt']});
+process_ok("Foo[% META foo='meta' %]" => "Foo(metaBAR)", {tt_config => [POST_PROCESS => 'foo.tt']});
+process_ok("([% WRAPPER wrap.tt %] one [% END %])" => '(Hi one there)BAR', {tt_config => [POST_PROCESS => 'bar.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG PROCESS ###################################################\n";
+
+process_ok("Foo" => "BAR",      {tt_config => [PROCESS => 'bar.tt']});
+process_ok("Foo" => "BAR",      {tt_config => [PROCESS => ['bar.tt']]});
+process_ok("Foo" => "(BAR)BAR", {tt_config => [PROCESS => ['foo.tt', 'bar.tt']]});
+process_ok("Foo" => "BlueBAR",  {tt_config => [PROCESS => 'bar.tt'], blue => 'Blue'});
+process_ok("Foo[% META foo='meta' %]" => "(metaBAR)", {tt_config => [PROCESS => 'foo.tt']});
+process_ok("Foo[% META foo='meta' %]" => "BAR(metaBAR)", {tt_config => [PRE_PROCESS => 'bar.tt', PROCESS => 'foo.tt']});
+process_ok("Foo[% META foo='meta' %]" => "(metaBAR)BAR", {tt_config => [POST_PROCESS => 'bar.tt', PROCESS => 'foo.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG WRAPPER ###################################################\n";
+
+process_ok(" one " => 'Hi one there', {tt_config => [WRAPPER => 'wrap.tt']});
+process_ok(" one " => 'Hi one there', {tt_config => [WRAPPER => ['wrap.tt']]});
+process_ok(" one " => 'HiwrapHi one therethere', {tt_config => [WRAPPER => ['wrap.tt', 'wrap.tt']]});
+process_ok(" ([% baz %]) " => 'Hi () there', {tt_config => [WRAPPER => 'wrap.tt']});
+process_ok(" one " => 'HiBAZ one there', {baz => 'BAZ', tt_config => [WRAPPER => 'wrap.tt']});;
+process_ok(" ([% baz; baz='-local' %]) " => 'Hi-local () there', {tt_config => [WRAPPER => 'wrap.tt']});
+process_ok("[% META foo='BLAM' %] " => 'HiBLAM there', {tt_config => [WRAPPER => 'wrap.tt']});
+
+process_ok(" one " => 'BARHi one there', {tt_config => [WRAPPER => 'wrap.tt', PRE_PROCESS => 'bar.tt']});
+process_ok(" one " => 'HiBARthere', {tt_config => [WRAPPER => 'wrap.tt', PROCESS => 'bar.tt']});
+process_ok(" one " => 'Hi one thereBAR', {tt_config => [WRAPPER => 'wrap.tt', POST_PROCESS => 'bar.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG ERRORS ####################################################\n";
+
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERROR  => 'catch.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERRORS => 'catch.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERROR  => {default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)',  {tt_config => [ERRORS => {default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error2 (foo) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {'foo.baz' => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)', {tt_config => [ERRORS => {'foo.baz' => 'catch2.tt', default => 'catch.tt'}]});
+process_ok("[% THROW foo.baz 'bar' %]" => 'Error2 (foo.baz) - (bar)', {tt_config => [ERRORS => {foo => 'catch2.tt', default => 'catch.tt'}]});
+
+process_ok("[% THROW foo 'bar' %]" => 'BARError (foo) - (bar)',  {tt_config => [ERROR  => 'catch.tt', PRE_PROCESS => 'bar.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt', PROCESS => 'die.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt', PROCESS => ['bar.tt', 'die.tt']]});
+process_ok("[% THROW foo 'bar' %]" => 'Error (foo) - (bar)BAR',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 'bar.tt']});
+process_ok("[% THROW foo 'bar' %]" => 'HiError (foo) - (bar)there', {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'wrap.tt']});
+
+process_ok("(outer)[% PROCESS 'die.tt' %]" => 'Error (bing) - (blang)',  {tt_config => [ERROR  => 'catch.tt']});
+process_ok("(outer)[% TRY %][% PROCESS 'die.tt' %][% CATCH %] [% END %]" => '(outer) ',  {tt_config => [ERROR  => 'catch.tt']});
+
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', PRE_PROCESS => 'die.tt']});
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', POST_PROCESS => 'die.tt']});
+process_ok(" one " => '',  {tt_config => [ERROR  => 'catch.tt', WRAPPER => 'die.tt']});
+
+###----------------------------------------------------------------###
+print "### CONFIG and DUMP ##################################################\n";
+
+process_ok("[% CONFIG DUMP => {html => 0}; DUMP foo; PROCESS config.tt; DUMP foo %]" => qq{DUMP: File "input text" line 1
+    foo = 'FOO';
+<b>DUMP: File "config.tt" line 1</b><pre>foo = &apos;FOO&apos;;
+</pre>DUMP: File "input text" line 1
+    foo = 'FOO';
+}, {foo => 'FOO'}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### NOT FOUND CACHE ##################################################\n";
+
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found (cached))\n", {tt_config => [NEGATIVE_STAT_TTL => 2]}) if ! $is_tt;
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [NEGATIVE_STAT_TTL => -1]}) if ! $is_tt;
+process_ok("[% BLOCK foo; TRY; PROCESS blurty.tt; CATCH %]([% error.type %])([% error.info %])\n[% END; END; PROCESS foo; PROCESS foo %]" => "(file)(blurty.tt: not found)\n(file)(blurty.tt: not found)\n", {tt_config => [STAT_TTL => -1]}) if ! $is_tt;
+
+###----------------------------------------------------------------###
+print "### DONE #############################################################\n";

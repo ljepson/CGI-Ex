@@ -15,27 +15,58 @@ my $txt  = "[% one %][% two %][% three %][% hash.keys.join %] [% code(one).lengt
 ###----------------------------------------------------------------###
 
 my $module;
+my $name;
 if (! fork) {
     $module = 'CGI::Ex::Template';
-    $0 = "perl $module";
+} elsif (! fork) {
+    $module = 'CGI::Ex::Template::XS';
 } elsif (! fork) {
     $module = 'Template';
-    $0 = "perl $module";
+} elsif (! fork) {
+    $module = 'Template';
+    $name   = 'Template Stash::XS';
+    require Template::Stash::XS;
+} elsif (! fork) {
+    $module = 'HTML::Template';
+} elsif (! fork) {
+    $module = 'HTML::Template::Expr';
+} elsif (! fork) {
+    $module = 'Template';
+    $name   = 'Template::Parser::CET';
+    require Template::Parser::CET;
+    Template::Parser::CET->activate;
 }
 
 if ($module) {
+    $name ||= $module;
+    $0 = "$0 - $name";
+
     my $pm = "$module.pm";
     $pm =~ s|::|/|g;
     require $pm;
 
-    my $t = $module->new(ABSOLUTE => 1);
-    my $out = '';
-    $t->process(\$txt, $swap, \$out);
-    print $out;
+    if ($module =~ /HTML::Template/) {
+        my $t = eval { $module->new };
+
+    } else {
+
+        my $t = $module->new(ABSOLUTE => 1);
+        my $out = '';
+        $t->process(\$txt, $swap, \$out);
+        print "$name $out";
+        for (1..30) { my $out; $t->process(\$txt, $swap, \$out); };
+    }
+
+#    print "$name $_\n" foreach sort keys %INC;
+    print "$name times: (@{[times]})\n";
+    sleep 15;
+    exit;
 }
 
-sleep 15; # go and check the 'ps fauwx|grep perl'
-
+sleep 2;
+print grep {/\Q$0\E/} `ps fauwx`;
+#sleep 15; # go and check the 'ps fauwx|grep perl'
+exit;
 
 ###----------------------------------------------------------------###
 
