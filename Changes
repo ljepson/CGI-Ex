@@ -1,3 +1,15 @@
+2.13
+      2007-05-21
+        * Added full support for HTML::Template and HTML::Template::Expr.
+        * Added missing HTML::Template::Expr vmethods.
+        * Added support for using Text vmethods as top level items.
+        * Added SYNTAX configuration item.
+        * Added V2EQUALS configuration item.
+        * Broke Extra and HTE out to its own area.
+        * Added many more tests.
+        * Allow QR_PRIVATE to be false.
+
+
 2.12
       2007-05-11
         * Add STAT_TTL

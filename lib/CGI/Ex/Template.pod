@@ -4,6 +4,8 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
 
 =head1 SYNOPSIS
 
+    ### Template::Toolkit style usage
+
     my $t = CGI::Ex::Template->new(
         INCLUDE_PATH => ['/path/to/templates'],
     );
@@ -25,6 +27,31 @@ CGI::Ex::Template - Fast and lightweight TT2/3 template engine
 
     ### CET uses the same syntax and configuration as Template::Toolkit
 
+
+    ### HTML::Template style usage
+
+    my $t = CGI::Ex::Template->new(
+        filename => 'my/template.ht',
+        path     => ['/path/to/templates'],
+    );
+
+    my $swap = {
+        key1 => 'val1',
+        key2 => 'val2',
+        code => sub { 42 },
+        hash => {a => 'b'},
+    };
+
+    $t->param($swap);
+
+    # print to STDOUT (errors die)
+    $t->output(print_to => \*STDOUT);
+
+    # process into a variable
+    my $out = $t->output;
+
+    ### CET can also use the same syntax and configuration as HTML::Template
+
 =head1 DESCRIPTION
 
 CGI::Ex::Template happened by accident (accidentally on purpose).  The
@@ -37,61 +64,43 @@ features.  One thing led to another and soon CET provided for most of
 the features of TT2 as well as some from TT3.  CGI::Ex::Template is a
 full-featured implementation of the Template::Toolkit language.
 
-CGI::Ex::Template (CET hereafter) is smaller, faster, uses less memory
-and less CPU than TT2.  However, it is most likely less portable, less
-extendable, and probably has many of the bugs that TT2 has already massaged
-out from years of bug reports and patches from a very active community
-and mailing list.  CET does not have a vibrant community behind it.  Fixes
-applied to TT2 will take longer to get into CET, should they get in at all.
-An attempt will be made to follow updates made to TT2 to keep the two
-in sync at a language level.  There already has been, and it is expected that
-there will continue to be code sharing between the two projects.  (Acutally
-I will try and keep applicable fixes in sync with TT).
+As of version 2.13, CGI::Ex::Template also provides near full
+compatibility with HTML::Template (HT), HTML::Template::JIT (HTJ), and
+HTML::Template::Expr (HTE).  Version 2.13 introduced the SYNTAX
+configuration allowing for inclusion of TT style templates in HT and
+vice versa.  It also provided the HTML::Template output and param
+methods which allow CET to provide the HTML::Template interface.  It
+was possible to add this extra functionality because CGI::Ex::Template
+employs an open architecture.
 
 CGI::Ex::Template uses a recursive regex based grammar (early versions
-before the 2.10 release did not).  This allows for the embedding of opening
-and closing tags inside other tags (as in [% a = "[% 1 + 2 %]" ;  a|eval %]).
-The individual methods such as parse_expr and play_expr may be used by external
-applications to add TT style variable parsing to other applications.
+before the 2.10 release did not).  This allows for the embedding of
+opening and closing tags inside other tags (as in [% a = "[% 1 + 2 %]"
+; a|eval %]).  The individual methods such as parse_expr and play_expr
+may be used by external applications to add TT style variable parsing
+to other applications.
 
-Most of the standard Template::Toolkit documentation covering directives,
-variables, configuration, plugins, filters, syntax, and vmethods should
-apply to CET just fine (This pod tries to explain everything - but there is
-too much).  The section on differences between CET and TT will explain
-what too look out for.
+CGI::Ex::Template is fast but CGI::Ex::Template::XS is even faster.
+If CGI::Ex::Template isn't fast enough for you, the XS version has key
+methods coded in C and provides a noticable improvement over the
+non-XS version.  CET by itself is generally faster than TT, HT, and HTE.
+The XS version is nearly always faster - even than HTJ.  CET also uses less
+memory than TT and HTE, and only a little more than HT.  (This is all
+as of version 2.13 in May 2007 - those other modules will undoubtedly
+receive updates that will improve their performance).
 
-Note: A clarification on "faster".  All templates are going to take
-different amounts of time to process.  Different types of DIRECTIVES
-parse and play more quickly than others.  The test script
-samples/benchmark/bench_template.pl was used to obtain sample numbers.
-In general the following statements are true:
+Most of the standard Template::Toolkit documentation covering
+directives, variables, configuration, plugins, filters, syntax, and
+vmethods should apply to CET just fine (This pod tries to explain
+everything - but there is too much).  The section on differences
+between CET and TT will explain what too look out for.
 
-    If you load a new Template object each time and pass a filename, CET
-    is around 3.5 times faster.
-
-    If you load a new Template object and pass a string ref, CET
-    is around 3 times faster.
-
-    If you load a new Template object and use CACHE_EXT, CET
-    is around 1.5 times faster.
-
-    If you use a cached object with a cached in memory template,
-    then CET is 50% faster.
-
-    If you use Template::Stash::XS with a cached in memory template,
-    then CET is about as fast.  But if you use CGI::Ex::Template::XS,
-    the CETX is faster still (about twice as fast as CET).
-
-It is pretty hard to beat the speed of XS stash with compiled in
-memory templates.  Many systems don't have access to those so
-CET may make more sense.  Hopefully as TT is revised, many of the CET
-speed advantages can be incorporated so that the core TT is just as
-fast or faster.  This was last updated at version 2.10 of CET and
-2.18 of TT.
+Additionally, most of the standard HTML::Template and
+HTML::Template::Expr documentation covering methods, variables,
+expressions, and syntax will apply to CET just fine as well.
 
 So should you use CGI::Ex::Template ?  Well, try it out.  It may
 give you no visible improvement.  Or it could.
-
 
 =head1 PUBLIC METHODS
 
@@ -106,19 +115,23 @@ commonly used public methods are listed later in this document.
         INCLUDE_PATH => ['/my/path/to/content', '/my/path/to/content2'],
     });
 
-    Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
+Arguments may be passed as a hash or as a hashref.  Returns a CGI::Ex::Template object.
 
-    There are currently no errors during CGI::Ex::Template object creation.
+There are currently no errors during CGI::Ex::Template object creation.  If you are
+using the HTML::Template interface, this is different behavior.  The document is
+not parsed until the output or process methods are called.
 
 =item C<process>
 
 This is the main method call for starting processing.  Any errors that result in the
 template processing being stopped will be stored and available via the ->error method.
+This is the TT compatible method - see the output method for HT compatibility.
 
-Process takes three arguments.
-
+    my $t = CGI::Ex::Template->new;
     $t->process($in, $swap, $out)
         || die $t->error;
+
+Process takes three arguments.
 
 The $in argument can be any one of:
 
@@ -157,6 +170,12 @@ The $out argument can be any one of:
 Additionally - the $out argument can be configured using the OUTPUT configuration
 item.
 
+The process method defaults to using the "cet" syntax which will parse TT3 and most
+TT2 documents.  To parse HT or HTE documents, you must pass the SYNTAX configuration
+item to the "new" method.  All calls to process would then default to HTE syntax.
+
+    my $obj = CGI::Ex::Template->new(SYNTAX => 'hte');
+
 =item C<process_simple>
 
 Similar to the process method but with the following restrictions:
@@ -176,41 +195,188 @@ be retrieved via the error method.
     $obj->process('somefile.html', {a => 'b'}, \$string_ref)
         || die $obj->error;
 
+=item C<output>
+
+HTML::Template way to process a template.  The output method requires that a filename,
+filehandle, scalarref, or arrayref argument was passed to the new method.  All of
+the HT calling conventions for new are supported.  The key difference is that CET will
+not actually process the template until the output method is called.
+
+    my $obj = CGI::Ex::Template->new(filename => 'myfile.html');
+    $obj->param(\%swap);
+    print $obj->output;
+
+See the HTML::Template documentation for more information.
+
+The output method defaults to using the "hte" syntax which will parse HTE and HT documents.
+To parse TT3 or TT2 documents, you must pass the SYNTAX configuration
+item to the "new" method.  All calls to process would then default to TT3 syntax.
+
+    my $obj = CGI::Ex::Template->new(SYNTAX => 'tt3');
+
+Any errors that occur during the output method will die with the error as the die value.
+
+=item C<param>
+
+HTML::Template way to get or set variable values that will be used by the output method.
+
+    my $val = $obj->param('key'); # get one value
+
+    $obj->param(key => $val);     # set one value
+
+    $obj->param(key => $val, key2 => $val2);   # set multiple
+
+    $obj->param({key => $val, key2 => $val2}); # set multiple
+
+See the HTML::Template documentation for more information.
+
+Note: CET does not support the die_on_bad_params configuration.  This is because CET
+does not resolve variable names until the output method is called.
+
 =item C<define_vmethod>
 
 This method is available for defining extra Virtual methods or filters.  This method is similar
 to Template::Stash::define_vmethod.
 
+    CGI::Ex::Template->define_vmethod(
+        'text',
+        reverse => sub { my $item = shift; return scalar reverse $item },
+    );
+
+=item C<register_function>
+
+This is the HTML::Template way of defining text vmethods.  It is the same as
+calling define_vmethod with "text" as the first argument.
+
+    CGI::Ex::Template->register_function(
+        reverse => sub { my $item = shift; return scalar reverse $item },
+    );
+
+=item C<define_directive>
+
+This method can be used for adding new directives or overridding existing
+ones.
+
+   CGI::Ex::Template->define_directive(
+       MYDIR => {
+           parse_sub => sub {}, # parse additional items in the tag
+           play_sub  => sub {
+               my ($self, $ref, $node, $out_ref) = @_;
+               $$out_ref .= "I always say the same thing!";
+               return;
+           },
+           is_block  => 1,  # is this block like
+           is_postop => 0,  # not a post operative directive
+           no_interp => 1,  # no interpolation in this block
+           continues => undef, # it doesn't "continue" any other directives
+       },
+   );
+
+Now with a template like:
+
+   my $str = "([% MYDIR %]This is something[% END %])";
+   CGI::Ex::Template->new->process(\$str);
+
+You will get:
+
+   (I always say the same thing!)
+
+We'll add more details in later revisions of this document.
+
+=item C<define_syntax>
+
+This method can be used for adding other syntaxes to or overridding
+existing ones in the list of choices available in CET.  The syntax can
+be chosen by the SYNTAX configuration item.
+
+    CGI::Ex::Template->define_syntax(
+        my_uber_syntax => sub {
+            my $self = shift;
+            local $self->{'V2PIPE'}      = 0;
+            local $self->{'V2EQUALS'}    = 0;
+            local $self->{'PRE_CHOMP'}   = 0;
+            local $self->{'POST_CHOMP'}  = 0;
+            local $self->{'NO_INCLUDES'} = 0;
+            return $self->parse_tree_tt3(@_);
+        },
+    );
+
+The subroutine that is used must return an opcode tree (AST) that
+can be played by the execute_tree method.
+
+=item C<define_operator>
+
+This method allows for adding new operators or overriding existing ones.
+
+    CGI::Ex::Template->define_operator({
+        type       => 'right', # can be one of prefix, postfix, right, left, none, ternary, assign
+        precedence => 84,      # relative precedence for resolving multiple operators without parens
+        symbols    => ['foo', 'FOO'], # any mix of chars can be used for the operators
+        play_sub   => sub {
+            my ($one, $two) = @_;
+            return "You've been foo'ed ($one, $two)";
+        },
+    });
+
+You can then use it in a template as in the following:
+
+   my $str = "[% 'ralph' foo 1 + 2 * 3 %]";
+   CGI::Ex::Template->new->process(\$str);
+
+You will get:
+
+   You've been foo'ed (ralph, 7)
+
+Future revisions of this document will include more samples.
+
 =back
 
 =head1 TODO
 
-    Add HTML::Template support
+Move module to its own namespace.
 
-=head1 HOW IS CGI::Ex::Template DIFFERENT
+Cleanup operator API to allow for easier full customization of
+operators.
+
+Give better examples of overriding directives, syntax, and operators.
+
+Add more functions to the XS version.
+
+Find other syntaxes to include.
+
+=head1 HOW IS CGI::Ex::Template DIFFERENT from Template::Toolkit
 
 CET uses the same base template syntax and configuration items as TT2,
 but the internals of CET were written from scratch.  Additionally much
-of the planned TT3 syntax is supported.  The following is a list of
-some of the ways that the configuration and syntax of CET are
-different from that of TT2.  Note: items that are planned to work in
-TT3 are marked with (TT3).
+of the planned TT3 syntax is supported as well as most of that of
+HTML::Template::Expr.  The following is a list of some of the ways
+that the configuration and syntax of CET are different from that of
+TT2.  Note: items that are planned to work in TT3 are marked with
+(TT3).
 
 =over 4
 
-=item Numerical hash keys work
+=item
+
+Numerical hash keys work
 
     [% a = {1 => 2} %]
 
-=item Quoted hash key interpolation is fine
+=item
+
+Quoted hash key interpolation is fine
 
     [% a = {"$foo" => 1} %]
 
-=item Multiple ranges in same constructor
+=item
+
+Multiple ranges in same constructor
 
     [% a = [1..10, 21..30] %]
 
-=item Constructor types can call virtual methods. (TT3)
+=item
+
+Constructor types can call virtual methods. (TT3)
 
     [% a = [1..10].reverse %]
 
@@ -228,7 +394,9 @@ TT3 are marked with (TT3).
 
     [% {a => b}.size %] # = 1
 
-=item The "${" and "}" variable interpolators can contain expressions,
+=item
+
+The "${" and "}" variable interpolators can contain expressions,
 not just variables.
 
     [% [0..10].${ 1 + 2 } %] # = 4
@@ -238,42 +406,58 @@ not just variables.
     [% color = qw/Red Blue/; FOR [1..4] ; color.${ loop.index % color.size } ; END %]
       # = RedBlueRedBlue
 
-=item You can use regular expression quoting.
+=item
+
+You can use regular expression quoting.
 
     [% "foo".match( /(F\w+)/i ).0 %] # = foo
 
-=item Tags can be nested.
+=item
+
+Tags can be nested.
 
     [% f = "[% (1 + 2) %]" %][% f|eval %] # = 3
 
-=item Arrays can be accessed with non-integer numbers.
+=item
+
+Arrays can be accessed with non-integer numbers.
 
     [% [0..10].${ 2.3 } %] # = 3
 
-=item Reserved names are less reserved. (TT3)
+=item
+
+Reserved names are less reserved. (TT3)
 
     [% GET GET %] # gets the variable named "GET"
 
     [% GET $GET %] # gets the variable who's name is stored in "GET"
 
-=item Filters and SCALAR_OPS are interchangeable. (TT3)
+=item
+
+Filters and SCALAR_OPS are interchangeable. (TT3)
 
     [% a | length %]
 
     [% b . lower %]
 
-=item Pipe "|" can be used anywhere dot "." can be and means to call
+=item
+
+Pipe "|" can be used anywhere dot "." can be and means to call
 the virtual method. (TT3)
 
     [% a = {size => "foo"} %][% a.size %] # = foo
 
     [% a = {size => "foo"} %][% a|size %] # = 1 (size of hash)
 
-=item Pipe "|" and "." can be mixed. (TT3)
+=item
+
+Pipe "|" and "." can be mixed. (TT3)
 
     [% "aa" | repeat(2) . length %] # = 4
 
-=item Added V2PIPE configuration item
+=item
+
+Added V2PIPE configuration item
 
 Restores the behavior of the pipe operator to be
 compatible with TT2.
@@ -286,7 +470,24 @@ With V2PIPE = 0 (default)
 
     [% PROCESS a | repeat(2) %] # = process block or file named a ~ a
 
-=item Added Virtual Object Namespaces. (TT3)
+=item
+
+Added V2EQUALS configuration item
+
+Allows for turning off TT2 "==" behavior.  Defaults to 1
+in TT syntaxes and to 0 in HT syntaxes.
+
+    [% CONFIG V2EQUALS => 1 %][% ('7' == '7.0') || 0 %]
+    [% CONFIG V2EQUALS => 0 %][% ('7' == '7.0') || 0 %]
+
+Prints
+
+    0
+    1
+
+=item
+
+Added Virtual Object Namespaces. (TT3)
 
 The Text, List, and Hash types give direct access
 to virtual methods.
@@ -301,62 +502,139 @@ to virtual methods.
        | Hash.keys
        | List.join(", ") %] # = a, b
 
-=item Added "fmt" scalar, list, and hash virtual methods.
+=item
+
+Added "fmt" scalar, list, and hash virtual methods.
 
     [% list.fmt("%s", ", ") %]
 
     [% hash.fmt("%s => %s", "\n") %]
 
-=item Whitespace is less meaningful. (TT3)
+=item
+
+Added missing HTML::Template::Expr vmethods
+
+The following vmethods were added - they correspond to the
+perl functions of the same name.
+
+    abs
+    atan2
+    cos
+    exp
+    hex
+    lc
+    log
+    oct
+    sin
+    sprintf
+    sqrt
+    srand
+    uc
+
+=item
+
+Allow all Scalar vmethods to behave as top level functions.
+
+    [% sprintf("%d %d", 7, 8) %] # = "7 8"
+
+The following are equivalent in CET:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+This feature may be disabling by setting the
+VMETHOD_FUNCTIONS configuration item to 0.
+
+This is similar to how HTML::Template::Expr operates, but
+now you can use this functionality in TT templates as well.
+
+=item
+
+Whitespace is less meaningful. (TT3)
 
     [% 2-1 %] # = 1 (fails in TT2)
 
-=item Added pow operator.
+=item
+
+Added pow operator.
 
     [% 2 ** 3 %] [% 2 pow 3 %] # = 8 8
 
-=item Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
+=item
+
+Added string comparison operators (gt ge lt le cmp)
+
+    [% IF "a" lt "b" %]a is less[% END %]
+
+=item
+
+Added numeric comparison operator (<=>)
+
+This can be used to make up for the fact that TT2 made == the
+same as eq (which will hopefully change - use eq when you mean eq).
+
+    [% IF ! (a <=> b) %]a == b[% END %]
+
+    [% IF (a <=> b) %]a != b[% END %]
+
+=item
+
+Added self modifiers (+=, -=, *=, /=, %=, **=, ~=). (TT3)
 
     [% a = 2;  a *= 3  ; a %] # = 6
     [% a = 2; (a *= 3) ; a %] # = 66
 
-=item Added pre and post increment and decrement (++ --). (TT3)
+=item
+
+Added pre and post increment and decrement (++ --). (TT3)
 
     [% ++a ; ++a %] # = 12
     [% a-- ; a-- %] # = 0-1
 
-=item Added qw// contructor. (TT3)
+=item
+
+Added qw// contructor. (TT3)
 
     [% a = qw(a b c); a.1 %] # = b
 
     [% qw/a b c/.2 %] # = c
 
-=item Added regex contructor. (TT3)
+=item
+
+Added regex contructor. (TT3)
 
     [% "FOO".match(/(foo)/i).0 %] # = FOO
 
     [% a = /(foo)/i; "FOO".match(a).0 %] # = FOO
 
-=item Allow for scientific notation. (TT3)
+=item
+
+Allow for scientific notation. (TT3)
 
     [% a = 1.2e-20 %]
 
     [% 123.fmt('%.3e') %] # = 1.230e+02
 
-=item Allow for hexidecimal input. (TT3)
+=item
+
+Allow for hexidecimal input. (TT3)
 
     [% a = 0xff0000 %][% a %] # = 16711680
 
     [% a = 0xff2 / 0xd; a.fmt('%x') %] # = 13a
 
-=item FOREACH variables can be nested.
+=item
+
+FOREACH variables can be nested.
 
     [% FOREACH f.b = [1..10] ; f.b ; END %]
 
 Note that nested variables are subject to scoping issues.
 f.b will not be reset to its value before the FOREACH.
 
-=item Post operative directives can be nested. (TT3)
+=item
+
+Post operative directives can be nested. (TT3)
 
 Andy Wardley calls this side-by-side effect notation.
 
@@ -369,7 +647,9 @@ Andy Wardley calls this side-by-side effect notation.
 
     [% a = [[1..3], [5..7]] %][% i FOREACH i = j FOREACH j = a %] # = 123567
 
-=item Semi-colons on directives in the same tag are optional. (TT3)
+=item
+
+Semi-colons on directives in the same tag are optional. (TT3)
 
     [% SET a = 1
        GET a
@@ -389,24 +669,37 @@ that can be used as a post-operative directive.
        2
        END %] # prints 1
 
-=item CATCH blocks can be empty.
+Note2: This behavior can be disabled by setting the SEMICOLONS
+configuration item to a true value.  If SEMICOLONS is true, then
+a SEMICOLON must be set after any directive that isn't followed
+by a post-operative directive.
+
+=item
+
+CATCH blocks can be empty.
 
 TT2 requires them to contain something.
 
-=item Added a DUMP directive.
+=item
+
+Added a DUMP directive.
 
 Used for Data::Dumpering the passed variable or expression.
 
    [% DUMP a.a %]
 
-=item Added CONFIG directive.
+=item
+
+Added CONFIG directive.
 
    [% CONFIG
         ANYCASE   => 1
         PRE_CHOMP => '-'
    %]
 
-=item Configuration options can use lowercase names instead
+=item
+
+Configuration options can use lowercase names instead
 of the all uppercase names that TT2 uses.
 
     my $t = CGI::Ex::Template->new({
@@ -414,30 +707,69 @@ of the all uppercase names that TT2 uses.
         interpolate => 1,
     });
 
-=item CET does not generate Perl code.
+=item
+
+Added LOOP directive (works the same as LOOP in HTML::Template.
+
+   [%- var = [{key => 'a'}, {key => 'b'}] %]
+   [%- LOOP var %]
+     ([% key %])
+   [%- END %]
+
+   Prints
+
+     (a)
+     (b)
+
+=item
+
+CET can parse HTML::Template and HTML::Template::Expr documents
+as well as TT2 and TT3 documents.
+
+=item
+
+Added SYNTAX configuration.  The SYNTAX configuration can be
+used to change what template syntax will be used for parsing
+included templates or eval'ed strings.
+
+   [% CONFIG SYNTAX => 'hte' %]
+   [% var = '<TMPL_VAR EXPR="sprintf('%s', 'hello world')">' %]
+   [% var | eval %]
+
+=item
+
+CET does not generate Perl code.
 
 It generates an "opcode" tree.  The opcode tree is an arrayref
 of scalars and array refs nested as deeply as possible.  This "simple"
 structure could be shared TT implementations in other languages
 via JSON or YAML.
 
-=item CET uses storable for its compiled templates.
+=item
+
+CET uses storable for its compiled templates.
 
 If EVAL_PERL is off, CET will not eval_string on ANY piece of information.
 
-=item There is eval_filter and MACRO recursion protection
+=item
+
+There is eval_filter and MACRO recursion protection
 
 You can control the nested nature of eval_filter and MACRO
 recursion using the MAX_EVAL_RECURSE and MAX_MACRO_RECURSE
 configuration items.
 
-=item There is no context.
+=item
+
+There is no context.
 
 CET provides a context object that mimics the Template::Context
 interface for use by some TT filters, eval perl blocks, views,
 and plugins.
 
-=item There is no stash.
+=item
+
+There is no stash.
 
 Well there is but it isn't an object.
 
@@ -446,11 +778,15 @@ those passed to the process method.  CET provides a stash object that
 mimics the Template::Stash interface for use by some TT filters, eval
 perl blocks, and plugins.
 
-=item There is no provider.
+=item
+
+There is no provider.
 
 CET uses the load_parsed_tree method to get and cache templates.
 
-=item There is no parser/grammar.
+=item
+
+There is no parser/grammar.
 
 CET has its own built-in recursive regex based parser and grammar system.
 
@@ -459,16 +795,120 @@ Template::Grammar in TT by using the Template::Parser::CET module.  This
 module uses the output of parse_tree to generate a TT style compiled perl
 document.
 
-=item The DEBUG directive is more limited.
+=item
+
+The DEBUG directive is more limited.
 
 It only understands DEBUG_DIRS (8) and DEBUG_UNDEF (2).
 
-=item CET has better line information
+=item
+
+CET has better line information
 
 When debug dirs is on, directives on different lines separated
 by colons show the line they are on rather than a general line range.
 
 Parse errors actually know what line and character they occured at.
+
+=back
+
+=head1 HOW IS CGI::Ex::Template DIFFERENT from HTML::Template
+
+CET can use the same base template syntax and configuration items as HTE
+and HT.  The internals of CET were written to support TT3, but were
+general enough to be extended to support HTML::Template as well.  The result
+is HTML::Template::Expr compatible syntax, with CET speed and a wide range
+of additional features.
+
+The TMPL_VAR, TMPL_IF, TMPL_ELSE, TMPL_UNLESS, TMPL_LOOP, and TMPL_INCLUDE
+all work identically to HTML::Template.
+
+=over 4
+
+=item
+
+Added support for other TT3 directives and for TT style "dot notation."
+
+    <TMPL_SET a = "bar">
+    <TMPL_SET b = [1 .. 25]>
+    <TMPL_SET foo = PROCESS 'filename.tt'>
+
+    <TMPL_GET foo>  # similar to <TMPL_VAR NAME="foo">
+    <TMPL_GET b.3>
+    <TMPL_GET my.nested.chained.variable.1>
+    <TMPL_GET my_var | html>
+
+    <TMPL_USE foo = DBI(db => ...)>
+    <TMPL_CALL foo.connect>
+
+Any of the TT directives can be used in HTML::Template documents.
+
+For many die-hard HTML::Template fans, it is probably quite scary to
+be providing all of the TT functionality.  All of the extended
+TT functionality can be disabled by setting the NO_TT configuration
+item.  The NO_TT configuration is automatically set if the SYNTAX is
+set to "ht" and the output method is called.
+
+=item
+
+There is an ELSIF!!!
+
+    <TMPL_IF foo>
+      FOO
+    <TMPL_ELSIF bar>
+      BAR
+    <TMPL_ELSE>
+      Done then
+    </TMPL_IF>
+
+=item
+
+Added CHOMP capabilities (PRE_CHOMP and POST_CHOMP)
+
+    Foo
+    <~TMPL_VAR EXPR="1+2"~>
+    Bar
+
+    Prints Foo3Bar
+
+=item
+
+Added INTERPOLATE capability
+
+    <TMPL_SET foo = 'FOO'>
+    <TMPL_CONFIG INTERPOLATE => 1>
+    $foo <TMPL_GET foo> ${ 1 + 2 }
+
+    Prints
+
+    FOO FOO 3
+
+=item
+
+Allow for HTML::Template templates to include TT style templates.
+
+    <TMPL_CONFIG SYNTAX => 'tt3'>
+    <TMPL_INCLUDE "filename.tt">
+
+=item
+
+Allow for Expr parsing to follow proper precedence rules.
+
+   <TMPL_VAR EXPR="1 + 2 * 3">
+
+   Properly prints 7.
+
+=item
+
+Uses all of the caching and opcode tree optimations provided by
+CGI::Ex::Template and CGI::Ex::Template::XS.
+
+=item
+
+CET does not provide the query method from HTML::Template.  This
+is because parsing of the document is delayed until the output
+method is called, and because CET supports TT style chained
+variables which often are not resolvable until run time.
 
 =back
 
@@ -483,6 +923,13 @@ CGI::Ex::Templates internal stash of variables which is essentially a
 hash reference.  This stash is initially populated by either passing a
 hashref as the second argument to the process method, or by setting
 the "VARIABLES" or "PRE_DEFINE" configuration variables.
+
+If you are using the HT and HTE syntaxes, the VAR, IF, UNLESS,
+LOOP, and INCLUDE directives will accept a NAME attribute which may
+only be a single level (non-chained) HTML::Template variable name, or
+they may accept an EXPR attribute which may be any valid TT3 variable or expression.
+
+The following are some sample ways to access variables.
 
     ### some sample variables
     my %vars = (
@@ -781,9 +1228,10 @@ list of available operators, please see the section titled OPERATORS.
     [% 1 + 2 * 3 %]       Prints 7
     [% (1 + 2) * 3 %]     Prints 9
 
-    [% x = 2 %]
+    [% x = 2 %]                      # assignments don't return anything
+    [% (x = 2) %]         Prints 2   # unless they are in parens
     [% y = 3 %]
-    [% z = x * (y - 1) %] Prints 4
+    [% x * (y - 1) %]     Prints 4
 
 =head1 VIRTUAL METHODS
 
@@ -818,6 +1266,14 @@ is called on it.
 Scalar virtual methods are also available through the "Text" virtual
 object (except for true filters such as eval and redirect).
 
+All scalar virtual methods are available as top level functions as well.
+This is not true of TT2.  In CGI::Ex::Template the following are equivalent:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+You may set VMETHOD_FUNCTIONS to 0 to disable this behavior.
+
 =over 4
 
 =item '0'
@@ -827,6 +1283,16 @@ object (except for true filters such as eval and redirect).
 Allows for scalars to mask as arrays (scalars already will, but this
 allows for more direct access).
 
+=item abs
+
+    [% -1.abs %] Returns the absolute value
+
+=item atan2
+
+    [% pi = 4 * 1.atan2(1) %]
+
+Returns the arctangent.  The item itself represents Y, the passed argument represents X.
+
 =item chunk
 
     [% item.chunk(60).join("\n") %] Split string up into a list of chunks of text 60 chars wide.
@@ -835,15 +1301,13 @@ allows for more direct access).
 
     [% item.collapse %] Strip leading and trailing whitespace and collapse all other space to one space.
 
+=item cos
+
+    [% item.cos %] Returns the cosine of the item.
+
 =item defined
 
     [% item.defined %] Always true - because the undef sub translates all undefs to ''.
-
-=item indent
-
-    [% item.indent(3) %] Indent that number of spaces.
-
-    [% item.indent("Foo: ") %] Add the string "Foo: " to the beginning of every line.
 
 =item eval
 
@@ -859,6 +1323,12 @@ This is a filter and is not available via the Text virtual object.
 
     Same as the eval filter.
 
+=item exp
+
+    [% 1.exp %] Something like 2.71828182845905
+
+Returns "e" to the power of the item.
+
 =item file
 
     Same as the redirect filter.
@@ -870,6 +1340,7 @@ This is a filter and is not available via the Text virtual object.
     [% item.fmt('%*s', 6) %]
 
 Similar to format.  Returns a string formatted with the passed pattern.  Default pattern is %s.
+Opposite from of the sprintf vmethod.
 
 =item format
 
@@ -885,13 +1356,31 @@ processed separately.
 
     [% item.hash %] Returns a one item hash with a key of "value" and a value of the item.
 
+
+=item hex
+
+    [% "FF".hex %]
+
+Returns the decimal value of the passed hex numbers.  Note that you
+may also just use [% 0xFF %].
+
 =item html
 
     [% item.html %] Performs a very basic html encoding (swaps out &, <, > and " for the html entities)
 
+=item indent
+
+    [% item.indent(3) %] Indent that number of spaces.
+
+    [% item.indent("Foo: ") %] Add the string "Foo: " to the beginning of every line.
+
 =item int
 
     [% item.int %] Return the integer portion of the value (0 if none).
+
+=item lc
+
+Same as the lower vmethod.  Returns the lower cased version of the item.
 
 =item lcfirst
 
@@ -904,6 +1393,12 @@ processed separately.
 =item list
 
     [% item.list %] Returns a list with a single value of the item.
+
+=item log
+
+    [% 8.exp.log %] Equal to 8.
+
+Returns the natural log base "e" of the item.
 
 =item lower
 
@@ -924,6 +1419,14 @@ In CGI::Ex::Template and TT3 you can use regular expressions notation as well.
 =item null
 
     [% item.null %] Do nothing.
+
+=item oct
+
+    [% "377".oct %]
+
+Returns the decimal value of the octal string.  On recent versions of perl you
+may also pass numbers starting with 0x which will be interpreted as hexidecimal,
+and starting with 0b which will be interpreted as binary.
 
 =item rand
 
@@ -971,6 +1474,10 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.search(/(\w+)/, "($1)") %] Same as before.
 
+=item sin
+
+    [% item.sin %] Returns the sine of the item.
+
 =item size
 
     [% item.size %] Always returns 1.
@@ -987,6 +1494,25 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.split( /\s+/, 3 ) %] Same as before.
 
+=item sprintf
+
+    [% item = "%d %d" %]
+    [% item.sprintf(7, 8) %]
+
+Uses the pattern stored in self, and passes it to sprintf with the passed arguments.
+Opposite from the fmt vmethod.
+
+=item sqrt
+
+    [% item.sqrt %]
+
+Returns the square root of the number.
+
+=item srand
+
+Calls the perl srand function to set the interal random seed.  This
+will affect future calls to the rand vmethod.
+
 =item stderr
 
     [% item.stderr %] Print the item to the current STDERR handle.
@@ -1001,13 +1527,17 @@ In CGI::Ex::Template and TT3 you may also use normal regular expression notation
 
     [% item.trim %] Strips leading and trailing whitespace.
 
+=item uc
+
+Same as the upper command.  Returns upper cased string.
+
 =item ucfirst
 
     [% item.ucfirst %] Lower-case the leading letter.
 
 =item upper
 
-    [% item.upper %] Return a upper-casified string.
+    [% item.upper %] Return a upper cased string.
 
 =item uri
 
@@ -1275,7 +1805,7 @@ Note: these aren't really objects.  All of the "virtual objects" are
 references to the $SCALAR_OPS, $LIST_OPS, and $HASH_OPS hashes
 found in the $VOBJS hash of CGI::Ex::Template.
 
-=head1 DIRECTIVES
+=head1 DIRECTIVES (TT Style)
 
 This section contains the alphabetical list of DIRECTIVES available in
 the TT language.  DIRECTIVES are the "functions" and control
@@ -1391,10 +1921,12 @@ The following compile time configuration options may be set:
     POST_CHOMP
     V1DOLLAR
     V2PIPE
+    V2EQUALS
 
 The following runtime configuration options may be set:
 
     DUMP
+    VMETHOD_FUNCTIONS
 
 If non-named parameters as passed, they will show the current configuration:
 
@@ -1611,6 +2143,10 @@ IF may also be used as a post operative directive.
 
     [% 'A equaled B' IF a == b %]
 
+Note: If you are using HTML::Template style documents, the TMPL_IF
+tag parses using the limited HTML::Template parsing rules.  However,
+you may use EXPR="" to embed a TT3 style expression.
+
 =item C<INCLUDE>
 
 Parse the contents of a file or block and insert them.  Variables defined
@@ -1657,6 +2193,29 @@ or commas (TT2 doesn't support the comma).
 =item C<LAST>
 
 Used to exit out of a WHILE or FOREACH loop.
+
+=item C<LOOP>
+
+This directive operates similar to the HTML::Template loop directive.
+The LOOP directive expects a single variable name.  This variable name
+should point to an arrayref of hashrefs.  The keys of each hashref
+will be added to the variable stash when it is iterated.
+
+    [% var a = [{b => 1}, {b => 2}, {b => 3}] %]
+
+    [% LOOP a %] ([% b %]) [% END %]
+
+Would print:
+
+     (1)  (2)  (3) 
+
+If CET is in HT mode and GLOBAL_VARS is false, the contents of
+the hashref will be the only items available during the loop iteration.
+
+If LOOP_CONTEXT_VARS is true, and $QR_PRIVATE is false (default when
+called through the output method), then the variables __first__, __last__,
+ __inner__, __odd__, and __counter__ will be set.  See the HTML::Template
+loop_context_vars configuration item for more information.
 
 =item C<MACRO>
 
@@ -2106,7 +2665,73 @@ surrounds it.
 
 =back
 
+=head1 DIRECTIVES (HTML::Template Style)
 
+HTML::Template templates use directives that look similar to the
+following:
+
+    <TMPL_VAR NAME="foo">
+
+    <TMPL_IF NAME="bar">
+      BAR
+    </TMPL_IF>
+
+The normal set of HTML::Template directives are TMPL_VAR,
+TMPL_IF, TMPL_ELSE, TMPL_UNLESS, TMPL_INCLUDE, and TMPL_LOOP.
+These tags should have either a NAME attribute, an EXPR attribute,
+or a bare variable name that is used to specify the value to
+be operated.  If a NAME is specified, it may only be a single
+level value (as opposed to a TT chained variable).  In the case
+of the TMPL_INCLUDE directive, the NAME is the file to be included.
+
+In CET, the EXPR attribute can be used with any of these types to
+specify TT compatible variable or expression that will be used for
+the value.
+
+    <TMPL_VAR NAME="foo">          Prints the value contained in foo
+    <TMPL_VAR foo>                 Prints the value contained in foo
+    <TMPL_VAR EXPR="foo">          Prints the value contained in foo
+
+    <TMPL_VAR NAME="foo.bar.baz">  Prints the value contained in {'foo.bar.baz'}
+    <TMPL_VAR EXPR="foo.bar.baz">  Prints the value contained in {foo}->{bar}->{baz}
+
+    <TMPL_IF foo>                  Prints FOO if foo is true
+      FOO
+    </TMPL_IF
+
+    <TMPL_UNLESS foo>              Prints FOO unless foo is true
+      FOO
+    </TMPL_UNLESS
+
+    <TMPL_INCLUDE NAME="foo.ht">   Includes the template in "foo.ht"
+
+    <TMPL_LOOP foo>                Iterates on the arrayref foo
+      <TMPL_VAR name>
+    </TMPL_LOOP>
+
+CGI::Ex::Template makes all of the other TT3 directives available
+in addition to the normal set of HTML::Template directives.  For
+example, the following is valid in CET.
+
+    <TMPL_MACRO bar(n) BLOCK>You said <TMPL_VAR n></TMPL_MACRO>
+    <TMPL_GET bar("hello")>
+
+The TMPL_VAR tag may also include an optional ESCAPE attribute.
+This specifies how the value of the tag should be escaped prior
+to substituting into the template.
+
+    Escape value |   Type of escape
+    ---------------------------------
+    HTML, 1      |   HTML encoding
+    URL          |   URL encoding
+    JS           |   basic javascript encoding (\n, \r, and \")
+    NONE, 0      |   No encoding (default).
+
+The TMPL_VAR tag may also include an optional DEFAULT attribute
+that contains a string that will be used if the variable returns
+false.
+
+    <TMPL_VAR foo DEFAULT="Foo was false">
 
 =head1 OPERATORS
 
@@ -2264,15 +2889,53 @@ Non associative binary.  Numerical comparators.
 
 Non associative binary.  String comparators.
 
-=item C<==  eq>
+=item C<eq>
 
-Non associative binary.  Equality test.  TT chose to use Perl's eq for both operators.
-There is no test for numeric equality.
+Non associative binary.  String equality test.
 
-=item C<!= ne>
+=item C<==>
 
-Non associative binary.  Non-equality test.  TT chose to use Perl's ne for both
-operators.  There is no test for numeric non-equality.
+Non associative binary. In TT syntaxes the V2EQUALS configuration
+item defaults to true which means this operator will operate
+the same as the "eq" operator.  Setting V2EQUALS to 0 will
+change this operator to mean numeric equality.  You could also use [% ! (a <=> b) %]
+but that is a bit messy.
+
+The HTML::Template syntaxes default V2EQUALS to 0 which means
+that it will test for numeric equality just as you would normally
+expect.
+
+In either case - you should always use "eq" when you mean "eq".
+The V2EQUALS will most likely eventually default to 0.
+
+=item C<ne>
+
+Non associative binary.  String non-equality test.
+
+=item C<!=>
+
+Non associative binary. In TT syntaxes the V2EQUALS configuration
+item defaults to true which means this operator will operate
+the same as the "ne" operator.  Setting V2EQUALS to 0 will
+change this operator to mean numeric non-equality.
+You could also use [% (a <=> b) %] but that is a bit messy.
+
+The HTML::Template syntaxes default V2EQUALS to 0 which means
+that it will test for numeric non-equality just as you would
+normally expect.
+
+In either case - you should always use "ne" when you mean "ne".
+The V2EQUALS will most likely eventually default to 0.
+
+=item C<< <=> >>
+
+Non associative binary.  Numeric comparison operator.  Returns -1 if the first argument is
+less than the second, 0 if they are equal, and 1 if the first argument is greater.
+
+=item C<< cmp >>
+
+Non associative binary.  String comparison operator.  Returns -1 if the first argument is
+less than the second, 0 if they are equal, and 1 if the first argument is greater.
 
 =item C<&&>
 
@@ -2445,11 +3108,13 @@ Would print:
 
     Hello.Hi.Howdy.
 
-=head1 CONFIGURATION
+=head1 CONFIGURATION (TT STYLE)
 
 The following TT2 configuration variables are supported (in
 alphabetical order).  Note: for further discussion you can refer to
 the TT config documentation.
+
+Items may be passed in upper or lower case.
 
 These variables should be passed to the "new" constructor.
 
@@ -2840,6 +3505,13 @@ can refer to each other in a circular manner.  Be careful about recursion.
 Boolean.  Default false.  If true, allows filenames to be specified
 that are relative to the currently running process.
 
+=item SEMICOLONS
+
+Boolean.  Default fast.  If true, then the syntax will require that
+semi-colons separate multiple directives in the same tag.  This is
+useful for keeping the syntax a little more clean as well as trouble
+shooting some errors.
+
 =item START_TAG
 
 Set a string to use as the opening delimiter for TT.  Default is "[%".
@@ -2851,6 +3523,45 @@ seconds until a cached in memory document is compared to the file
 system for modifications.  Setting this number higher will allow for
 fewer file system accesses.  Setting it to a negative number will allow
 for the file system to be checked every hit.
+
+=item SYNTAX (not in TT)
+
+Defaults to "cet".  Indicates the syntax that will be used for parsing
+included templates or eval'ed strings.  You can use the CONFIG
+directive to change the SYNTAX on the fly (it will not affect
+the syntax of the document currently being parsed).
+
+The syntax may be passed in upper or lower case.
+
+The available choices are:
+
+    cet - CGI::Ex::Template style - the same as TT3
+    tt3 - Template::Toolkit ver3 - same as CET
+    tt2 - Template::Toolkit ver2 - almost the same as TT3
+    tt1 - Template::Toolkit ver1 - almost the same as TT2
+    ht  - HTML::Template - same as HTML::Template::Expr without EXPR
+    hte - HTML::Template::Expr
+
+Passing in a different syntax allows for the process method
+to use a non-TT syntax and for the output method to use a non-HT
+syntax.
+
+The following is a sample of HTML::Template interface usage parsing
+a Template::Toolkit style document.
+
+    my $obj = CGI::Ex::Template->new(filename => 'my/template.tt'
+                                     syntax   => 'cet');
+    $obj->param(\%swap);
+    print $obj->output;
+
+The following is a sample of Template::Toolkit interface usage parsing
+a HTML::Template::Expr style document.
+
+    my $obj = CGI::Ex::Template->new(SYNTAX => 'hte');
+    $obj->process('my/template.ht', \%swap);
+
+You can use the define_syntax method to add another custom syntax to
+the list of available options.
 
 =item TAG_STYLE
 
@@ -2902,6 +3613,21 @@ following is a basic table of changes invoked by using V1DOLLAR.
    "Text: ${foo}"       "Text: ${foo}"
    "Text: ${$foo}"      "Text: ${foo}"
 
+=item V2EQUALS
+
+Default 1 in TT syntaxes, defaults to 0 in HTML::Template syntaxes.
+
+If set to 1 then "==" is an alias for "eq" and "!= is an alias for
+"ne".
+
+    [% CONFIG V2EQUALS => 1 %][% ('7' == '7.0') || 0 %]
+    [% CONFIG V2EQUALS => 0 %][% ('7' == '7.0') || 0 %]
+
+    Prints
+
+    0
+    1
+
 =item V2PIPE
 
 Restores the behavior of the pipe operator to be compatible with TT2.
@@ -2933,6 +3659,16 @@ A hashref of variables to initialize the template stash with.  These
 variables are available for use in any of the executed templates.
 See the section on VARIABLES for the types of information that can be passed in.
 
+=item VMETHOD_FUNCTIONS
+
+Defaults to 1.  All scalar virtual methods are available as top level functions as well.
+This is not true of TT2.  In CGI::Ex::Template the following are equivalent:
+
+    [% "abc".length %]
+    [% length("abc") %]
+
+You may set VMETHOD_FUNCTIONS to 0 to disable this behavior.
+
 =item WRAPPER
 
 Operates similar to the WRAPPER directive.  The option can be given a
@@ -2953,8 +3689,184 @@ See the WRAPPER direcive for more examples of how wrappers are construted.
 
 =back
 
+=head1 CONFIGURATION (HTML::Template STYLE)
 
-=head1 UNSUPPORTED TT CONFIGURATION
+The following HTML::Template and HTML::Template::Expr
+configuration variables are supported (in HTML::Template documentation order).
+Note: for further discussion you can refer to the HT documentation.
+Many of the variables mentioned in the TT CONFIGURATION section
+apply here as well.  Unless noted, these items only apply when
+using the output method.
+
+Items may be passed in upper or lower case.
+
+These variables should be passed to the "new" constructor.
+
+    my $obj = CGI::Ex::Template->new(
+        type   => 'filename',
+        source => 'my/template.ht',
+        die_on_bad_params => 1,
+        loop_context_vars => 1,
+        global_vars       => 1
+        post_chomp => "=",
+        pre_chomp  => "-",
+    );
+
+=over 4
+
+=item type
+
+Can be one of filename, filehandle, arrayref, or scalarref.  Indicates what type
+of input is in the "source" configuration item.
+
+=item source
+
+Stores where to read the input file.  The type is specified in the "type"
+configuration item.
+
+=item filename
+
+Indicates a filename to read the template from.  Same as putting the
+filename in the "source" item and setting "type" to "filename".
+
+Must be set to enable caching.
+
+=item filehandle
+
+Should contain an open filehandle to read the template from.  Same as
+putting the filehandle in the "source" item and setting "type" to "filehandle".
+
+Will not be cached.
+
+=item arrayref
+
+Should contain an arrayref whose values are the lines of the template.  Same as
+putting the arrayref in the "source" item and setting "type" to "arrayref".
+
+Will not be cached.
+
+=item scalarref
+
+Should contain an reference to a scalar that contains the template.  Same as
+putting the scalar ref in the "source" item and setting "type" to "scalarref".
+
+Will not be cached.
+
+=item cache
+
+If set to one, then CET will use a global, in-memory document cache
+to store compiled templates in between calls.  This is generally only
+useful in a mod_perl environment.  The document is checked for a different
+modification time at each request.
+
+=item blind_cache
+
+Same as with cache enabled, but will not check if the document has
+been modified.
+
+=item file_cache
+
+If set to 1, will cache the compiled document on the file system.  If
+true, file_cache_dir must be set.
+
+=item file_cache_dir
+
+The directory where to store cached documents when file_cache is true.
+This is similar to the TT compile_dir option.
+
+=item double_file_cache
+
+Uses a combination of file_cache and cache.
+
+=item path
+
+Same as INCLUDE_PATH when using the process method.
+
+=item associate
+
+May be a single CGI object or an arrayref of objects.  The params
+from these objects will be added to the params during the
+output call.
+
+=item case_sensitive
+
+Allow passed variables set through the param method, or the
+associate configuration to be used case sensitively.  Default is
+off.  It is highly suggested that this be set to 1.
+
+=item loop_context_vars
+
+Default false.  When true, calls to the loop directive will
+create the following variables that give information about the
+current iteration of the loop:
+
+   __first__   - True on first iteration only
+   __last__    - True on last iteration only
+   __inner__   - True on any iteration that isn't first or last
+   __odd__     - True on odd iterations
+   __counter__ - The iteration count
+
+These variables are also available to LOOPs run under
+TT syntax if loop_context_vars is set and if QR_PRIVATE is set to 0.
+
+=item no_includes
+
+Default false.  If true, calls to INCLUDE, PROCESS, WRAPPER and INSERT
+will fail.  This option is also available when using the process method.
+
+=item global_vars.
+
+Default true in HTE mode.  Default false in HT.  Allows top level
+variables to be used in LOOPs.  When false, only variables defined
+in the current LOOP iteration hashref will be available.
+
+=item default_escape
+
+Controls the type of escape used on named variables in TMPL_VAR
+directives.  Can be one of HTML, URL, or JS.  The values of
+TMPL_VAR directives will be encoded with this type unless
+they specify their own type via an ESCAPE attribute.
+
+=back
+
+=head1 UNSUPPORTED HT CONFIGURATION
+
+=over 4
+
+=item die_on_bad_params
+
+CET does not resolve variables until the template is output.
+
+=item force_untaint
+
+=item strict
+
+CET is strict on parsing HT documents.
+
+=item shared_cache, double_cache
+
+CET doesn't have shared caching.  Yet.
+
+=item search_path_on_include
+
+CET will check the full path array on each include.
+
+=item debug items
+
+The HTML::Template style options are included here, but you
+can use the TT style DEBUG and DUMP directives to do intropection.
+
+=item max_includes
+
+CET uses TT's recursion protection.
+
+=item filter
+
+CET doesn't offer these.
+
+=back
+
+=head1 UNSUPPORTED TT2 CONFIGURATION
 
 =over 4
 
@@ -3212,10 +4124,6 @@ upon operator precedence.
 
 Used to create a "pseudo" context object that allows for portability
 of TT plugins, filters, and perl blocks that need a context object.
-
-=item C<DEBUG>
-
-TT2 Holdover that is used once for binmode setting during a TT2 test.
 
 =item C<debug_node>
 
