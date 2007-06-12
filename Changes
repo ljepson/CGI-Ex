@@ -1,3 +1,9 @@
+2.14
+      2007-06-12
+        * Moved CGI::Ex::Template to Template::Alloy
+        * Template::Alloy is now required as a dependency
+        * Update some portions of App POD.
+
 2.13
       2007-05-21
         * Added full support for HTML::Template and HTML::Template::Expr.
