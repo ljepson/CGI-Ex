@@ -1,11 +1,11 @@
 # http://module-build.sourceforge.net/META-spec.html
 #XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
 name:         CGI-Ex
-version:      2.14
+version:      2.15
 version_from: lib/CGI/Ex.pm
 installdirs:  site
 requires:
-    Template::Alloy:               1.002
+    Template::Alloy:               1.003
 
 distribution_type: module
 generated_by: ExtUtils::MakeMaker version 6.30_01
