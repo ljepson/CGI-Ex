@@ -23,7 +23,7 @@ use CGI::Ex;
 use CGI::Ex::Dump qw(debug ctrace dex_html);
 
 BEGIN {
-  $VERSION = '2.15';
+  $VERSION = '2.16';
   $SHOW_TRACE = 0      if ! defined $SHOW_TRACE;
   $IGNORE_EVAL = 0     if ! defined $IGNORE_EVAL;
   $EXTENDED_ERRORS = 1 if ! defined $EXTENDED_ERRORS;
@@ -180,8 +180,12 @@ the developer, should errors occur.  This is a stub phase module.
 More features (error notification, custom error page, etc) will
 be added later.
 
+=head1 LICENSE
+
+This module may distributed under the same terms as Perl itself.
+
 =head1 AUTHORS
 
-Paul Seamons <perlspam at seamons dot com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

@@ -332,9 +332,9 @@ MODULES
 
     See also CGI::Ex::Validate.
 
-AUTHOR
-    Paul Seamons
-
 LICENSE
     This module may be distributed under the same terms as Perl itself.
+
+AUTHOR
+    Paul Seamons <perl at seamons dot com>
 

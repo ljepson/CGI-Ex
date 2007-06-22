@@ -132,8 +132,10 @@ How about a form with validation (inluding javascript validation)...
 There are infinite possibilities.  There is a longer "SYNOPSIS" after
 the process flow discussion and more examples near the end of this
 document.  It is interesting to note that there have been no databases
-so far.  CGI::Ex::App is Controller/Viewer that is somewhat Model
-agnostic.
+so far.  It is very, very difficult to find a single database
+abstraction that fits every model.  CGI::Ex::App is Controller/Viewer
+that is somewhat Model agnostic and doesn't come with any default
+database abstraction.
 
 =head1 DESCRIPTION
 
@@ -245,16 +247,16 @@ during the run_step hook.
 
     run_step {
         ->pre_step (hook)
-            # exits nav_loop if true
+            # skips this step if true and exit nav_loop
 
         ->skip (hook)
-            # skips this step if true (stays in nav_loop)
+            # skips this step if true and stays in nav_loop
 
         ->prepare (hook - defaults to true)
 
         ->info_complete (hook - ran if prepare was true)
             ->ready_validate (hook)
-            return false if ! ready_validate
+                # returns false from info_complete if ! ready_validate
             ->validate (hook - uses CGI::Ex::Validate to validate form info)
                 ->hash_validation (hook)
                    ->file_val (hook)
@@ -263,7 +265,7 @@ during the run_step hook.
                        ->name_module
                        ->name_step
                        ->ext_val
-            returns true if validate is true or if nothing to validate
+            # returns true if validate is true or if nothing to validate
 
         ->finalize (hook - defaults to true - ran if prepare and info_complete were true)
 
@@ -1113,8 +1115,8 @@ The following items will be cleared:
     path
     path_i
     history
-    __morph_lineage_start_index
-    __morph_lineage
+    _morph_lineage_start_index
+    _morph_lineage
     hash_errors
     hash_fill
     hash_swap
@@ -1202,6 +1204,11 @@ called is "view".
             "    view - post_print - post_print - 0.00003 - 0"
     ];
 
+=item error_step (method)
+
+Defaults to "__error".  The name of a step to run should a dying error
+be caught by the default handle_error method.  See the handle_error method.
+
 =item exit_nav_loop (method)
 
 This method should not normally used but there is no problem with
@@ -1234,40 +1241,6 @@ For example, if name_step returns "foo" and ext_val returns "val"
 then the file "foo.val" will be searched for.
 
 See the section on FINDING TEMPLATES for further discussion.
-
-=item first_step (method)
-
-Returns the first step of the path.  Note that first_step may not be the same
-thing as default_step if the path was overridden.
-
-=item form (method)
-
-Returns a hashref of the items passed to the CGI.  Returns
-$self->{form} which defaults to CGI::Ex::get_form.
-
-=item handle_error (method)
-
-If anything dies during execution, handle_error will be called with
-the error that had happened.  Default action is to die with that error.
-
-=item history (method)
-
-Returns an arrayref which contains trace history of which hooks of
-which steps were ran.  Useful for seeing what happened.  In general -
-each line of the history will show the current step, the hook
-requested, and which hook was actually called.
-
-The dump_history method shows a short condensed version of this
-history which makes it easier to see what path was followed.
-
-In general, the arrayref is free for anything to push onto which will
-help in tracking other occurrences in the program as well.
-
-=item init (method)
-
-Called by the default new method.  Allows for any object
-initilizations that may need to take place.  Default action does
-nothing.
 
 =item fill_args (hook)
 
@@ -1324,7 +1297,7 @@ The file should be readable by CGI::Ex::Validate::get_validation.
 
 This hook is only necessary if the hash_validation hook has not been
 overridden.
-
+5B
 This method an also return a hashref containing the validation - but
 then you may have wanted to override the hash_validation hook.
 
@@ -1368,11 +1341,21 @@ override the base package (it is still OK to use the full method name
 
 See the run_hook method and the morph method for more details.
 
+=item first_step (method)
+
+Returns the first step of the path.  Note that first_step may not be the same
+thing as default_step if the path was overridden.
+
 =item forbidden_step (method)
 
 Defaults to "__forbidden".  The name of a step to run should the current
 step name be invalid, or if a step found by the default path method
 is invalid.  See the path method.
+
+=item form (method)
+
+Returns a hashref of the items passed to the CGI.  Returns
+$self->{form} which defaults to CGI::Ex::get_form.
 
 =item form_name (hook)
 
@@ -1432,6 +1415,12 @@ only once.
 Full customization of the login process and the login template can
 be done via the auth_args hash.  See the auth_args method and
 CGI::Ex::Auth perldoc for more information.
+
+=item handle_error (method)
+
+If anything dies during execution, handle_error will be called with
+the error that had happened.  Default action is to try running the
+step returned by the error_step method.
 
 =item hash_base (hook)
 
@@ -1525,12 +1514,31 @@ pass it to CGI::Ex::Validate::get_validation.  If no file_val is
 returned or if the get_validation fails, an empty hash will be returned.
 Validation is implemented by ->vob which loads a CGI::Ex::Validate object.
 
+=item history (method)
+
+Returns an arrayref which contains trace history of which hooks of
+which steps were ran.  Useful for seeing what happened.  In general -
+each line of the history will show the current step, the hook
+requested, and which hook was actually called.
+
+The dump_history method shows a short condensed version of this
+history which makes it easier to see what path was followed.
+
+In general, the arrayref is free for anything to push onto which will
+help in tracking other occurrences in the program as well.
+
 =item info_complete (hook)
 
 Calls the ready_validate hook to see if data is ready to validate.  If
 so it calls the validate hook to validate the data.  Should make
 sure the data is ready and valid.  Will not be run unless
 prepare returns true (default).
+
+=item init (method)
+
+Called by the default new method.  Allows for any object
+initilizations that may need to take place.  Default action does
+nothing.
 
 =item insert_path (method)
 
@@ -3079,12 +3087,12 @@ the original versions.
 
     Krassimir Berov - feedback and some warnings issues with POD examples.
 
-=head1 AUTHOR
-
-Paul Seamons <paul at seamons dot com>
-
 =head1 LICENSE
 
 This module may be distributed under the same terms as Perl itself.
+
+=head1 AUTHOR
+
+Paul Seamons <perl at seamons dot com>
 
 =cut
