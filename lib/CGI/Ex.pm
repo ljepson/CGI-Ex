@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.16';
+    $VERSION               = '2.17';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -249,7 +249,7 @@ sub content_type { &print_content_type }
 #   print_content_type();
 #   print_content_type('text/plain);
 sub print_content_type {
-    my ($self, $type) = ($#_ >= 1) ? @_ : ref($_[0]) ? (shift, undef) : (undef, shift);
+    my ($self, $type, $charset) = (@_ && ref $_[0]) ? @_ : (undef, @_);
     $self = __PACKAGE__->new if ! $self;
 
     if ($type) {
@@ -257,6 +257,7 @@ sub print_content_type {
     } else {
         $type = 'text/html';
     }
+    $type .= "; charset=$charset" if $charset && $charset =~ m|^[\w\-\.\:\+]+$|;
 
     if (my $r = $self->apache_request) {
         return if $r->bytes_sent;
@@ -919,6 +920,14 @@ print content-type once.  (Useful if you don't know if something
 else already printed content-type).  Calling this sends the Content-type
 header.  Trying to print -E<gt>content_type is an error.  For clarity,
 the method -E<gt>print_content_type is available.
+
+    $cgix->print_content_type;
+
+    # OR
+    $cgix->print_content_type('text/html');
+
+    # OR
+    $cgix->print_content_type('text/html', 'utf-8');
 
 =item C<-E<gt>set_cookie>
 

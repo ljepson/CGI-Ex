@@ -10,7 +10,7 @@ use strict;
 use vars qw($VERSION);
 
 BEGIN {
-    $VERSION = '2.16';
+    $VERSION = '2.17';
 
     Time::HiRes->import('time') if eval {require Time::HiRes};
     eval {require Scalar::Util};
@@ -33,12 +33,73 @@ sub new {
 
     $self->init;
 
+    $self->init_from_conf;
+
     return $self;
 }
 
 sub init {}
 
 sub destroy {}
+
+###----------------------------------------------------------------###
+
+sub init_from_conf {
+    my $self = shift;
+    return if ! $self->load_conf;
+    my $conf = $self->conf;
+    @{ $self }{ keys %$conf } = values %$conf;
+    return;
+}
+
+sub load_conf { shift->{'load_conf'} ||= @_ ? 1 : 0 }
+
+sub conf {
+    my $self = shift;
+    return $self->{'conf'} ||= do {
+        my $conf = $self->conf_obj->read($self->conf_file, {no_warn_on_fail => 1}) || croak $@;
+        my $hash = $self->conf_validation;
+        if ($hash && scalar keys %$hash) {
+            my $err_obj = $self->vob->validate($conf, $hash);
+            die $err_obj if $err_obj;
+        }
+        $conf;
+    }
+}
+
+sub conf_path {
+    my $self = shift;
+    return $self->{'conf_path'} || $self->base_dir_abs;
+}
+
+sub conf_file {
+    my $self = shift;
+    return $self->{'conf_file'} ||= do {
+        my $module = $self->name_module || croak 'Missing name_module during conf_file call';
+        $module .'.'. $self->conf_ext;
+    };
+}
+
+sub conf_ext {
+    my $self = shift;
+    $self->{'conf_ext'} = shift if @_ == 1;
+    return $self->{'conf_ext'} || 'pl';
+}
+
+sub conf_args { shift->{'conf_args'} || {} }
+
+sub conf_obj {
+    my $self = shift;
+    return $self->{'conf_obj'} || do {
+        my $args = $self->conf_args;
+        $args->{'paths'}     ||= $self->conf_path;
+        $args->{'directive'} ||= 'MERGE';
+        require CGI::Ex::Conf;
+        CGI::Ex::Conf->new($args);
+    };
+}
+
+sub conf_validation {}
 
 ###----------------------------------------------------------------###
 
@@ -710,15 +771,17 @@ sub vob {
     $self->{'vob'} = shift if @_ == 1;
     return $self->{'vob'} ||= do {
         require CGI::Ex::Validate;
+        my $args = $self->vob_args;
+        $args->{'cgix'} ||= $self->cgix;
         CGI::Ex::Validate->new($self->vob_args); # return of the do
     };
 }
 
-sub vob_args {
+sub vob_args { shift->{'vob_args'} || {} }
+
+sub vob_path {
     my $self = shift;
-    return {
-        cgix    => $self->cgix,
-    };
+    return $self->{'vob_path'} || $self->template_path;
 }
 
 ### provide a place for placing variables
@@ -825,7 +888,7 @@ sub prepared_print {
 
 sub print {
     my ($self, $step, $swap, $fill) = @_;
-    my $file = $self->run_hook('file_print', $step); # get a filename relative to base_dir_abs
+    my $file = $self->run_hook('file_print', $step); # get a filename relative to template_path
     my $out  = $self->run_hook('swap_template', $step, $file, $swap);
     $self->run_hook('fill_template', $step, \$out, $fill);
     $self->run_hook('print_out',     $step, \$out);
@@ -834,15 +897,18 @@ sub print {
 sub print_out {
     my ($self, $step, $out) = @_;
 
-    $self->cgix->print_content_type;
+    $self->cgix->print_content_type($self->mimetype($step), $self->charset($step));
     print ref($out) eq 'SCALAR' ? $$out : $out;
 }
+
+sub mimetype { shift->{'mimetype'} || 'text/html' }
+sub charset  { shift->{'charset'}  || '' }
 
 sub swap_template {
     my ($self, $step, $file, $swap) = @_;
 
     my $args = $self->run_hook('template_args', $step);
-    $args->{'INCLUDE_PATH'} ||= $self->base_dir_abs;
+    $args->{'INCLUDE_PATH'} ||= $args->{'include_path'} || $self->template_path;
 
     my $t = $self->template_obj($args);
     my $out = '';
@@ -851,7 +917,12 @@ sub swap_template {
     return $out;
 }
 
-sub template_args { {} }
+sub template_path {
+    my $self = shift;
+    return $self->{'template_path'} || $self->base_dir_abs;
+}
+
+sub template_args { shift->{'template_args'} || {} }
 
 sub template_obj {
     my ($self, $args) = @_;
@@ -873,7 +944,7 @@ sub fill_template {
     CGI::Ex::Fill::fill($args);
 }
 
-sub fill_args { {} }
+sub fill_args { shift->{'fill_args'} || {} }
 
 sub pre_step   { 0 } # success indicates we handled step (don't continue step or loop)
 sub skip       { 0 } # success indicates to skip the step (and continue loop)
@@ -927,7 +998,7 @@ sub file_val {
     my $step = shift;
 
     ### determine the path to begin looking for files - allow for an arrayref
-    my $abs = $self->base_dir_abs || [];
+    my $abs = $self->vob_path || [];
     $abs = $abs->() if UNIVERSAL::isa($abs, 'CODE');
     $abs = [$abs] if ! UNIVERSAL::isa($abs, 'ARRAY');
     return {} if @$abs == 0;
@@ -1046,10 +1117,10 @@ sub hash_base {
         my $copy = $self;
         eval {require Scalar::Util; Scalar::Util::weaken($copy)};
         my $hash = {
-            script_name     => $copy->script_name,
-            path_info       => $copy->path_info,
+            script_name     => $self->script_name,
+            path_info       => $self->path_info,
             js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
-            form_name       => sub { $copy->run_hook('form_name', $step) },
+            form_name       => $self->run_hook('form_name', $step),
             $self->step_key => $step,
         }; # return of the do
     };
@@ -1172,7 +1243,7 @@ sub __error_info_complete { 0 }
 
 sub __error_hash_swap { shift->stash }
 
-sub __error_file_print { \ "<h1>An a fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 ###----------------------------------------------------------------###
 

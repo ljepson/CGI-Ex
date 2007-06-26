@@ -223,6 +223,14 @@ CGI::Ex METHODS
         header. Trying to print ->content_type is an error. For clarity, the
         method ->print_content_type is available.
 
+            $cgix->print_content_type;
+
+            # OR
+            $cgix->print_content_type('text/html');
+
+            # OR
+            $cgix->print_content_type('text/html', 'utf-8');
+
     "->set_cookie"
         Arguments are the same as those to CGI->new->cookie({}). Uses CGI's
         cookie method to create a cookie, but then, depending on if content
