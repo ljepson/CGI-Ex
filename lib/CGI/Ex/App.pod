@@ -208,7 +208,7 @@ The nav_loop method will run as follows:
                 # exits nav_loop if true
 
             ->morph
-                # check ->allow_morph
+                # check ->allow_morph (hook)
                 # check ->allow_nested_morph
                 # ->morph_package (hook - get the package to bless into)
                 # ->fixup_after_morph if morph_package exists
@@ -981,7 +981,7 @@ The following is the alphabetical list of methods and hooks.
 
 =over 4
 
-=item allow_morph (method)
+=item allow_morph (hook)
 
 Should return true if this step is allowed to "morph" the current App
 object into another package.  Default is false.  It is passed a single
@@ -1139,24 +1139,28 @@ load_conf is false)..
 
 Caches results in $self->{'conf'}.
 
+If the conf_file can't be found, the method will die unless
+conf_die_on_fail returns 0 (defaults to true).
+
+=item conf_args
+
+Used by conf_obj.
+
+Defaults to $self->{'conf_args'} which defaults to {}.  Will have
+paths => $self->conf_path added before passing to CGI::Ex::Conf->new.
+
 =item conf_file (method)
 
 Used by conf for finding the configuration file to load.  Defaults
 to $self->{'conf_file'} which defaults $self->name_module with the extention
-returned by $self->conf_ext added on.  For example, if name_module
-returns "my_app" and conf_ext returns "ini" the value returned will
+returned by $self->ext_conf added on.  For example, if name_module
+returns "my_app" and ext_conf returns "ini" the value returned will
 be "my_app.ini".
 
 The value returned can absolute.  If the value will be searched for
 in the paths passed to conf_obj.
 
-The conf_ext may be any of those extentions understood by CGI::Ex::Conf.
-
-=item conf_ext
-
-Used by the default conf_file method.  Defaults to $self->{'conf_ext'} which
-defaults to 'pl' meaning that the read configuration file should return a
-valid perl hashref.
+The ext_conf may be any of those extentions understood by CGI::Ex::Conf.
 
 =item conf_obj
 
@@ -1171,13 +1175,6 @@ Any object that provides a read method that returns a hashref can be used.
 Defaults to $self->{'conf_path'} which defaults to base_dir_abs.  Should be
 a path or an arrayref of paths to look the configuration file returned by
 conf_file when that file is not absolute.
-
-=item conf_args
-
-Used by conf_obj.
-
-Defaults to $self->{'conf_args'} which defaults to {}.  Will have
-paths => $self->conf_path added before passing to CGI::Ex::Conf->new.
 
 =item conf_validation
 
@@ -1283,6 +1280,12 @@ hooks for the current and remaining steps.  It is used to allow the
 ->jump functionality.  If the application has morphed, it will be
 unmorphed before returning.  Also - the post_navigate method will
 still be called.
+
+=item ext_conf
+
+Used by the default conf_file method.  Defaults to $self->{'ext_conf'} which
+defaults to 'pl' meaning that the read configuration file should return a
+valid perl hashref.
 
 =item ext_print (method)
 

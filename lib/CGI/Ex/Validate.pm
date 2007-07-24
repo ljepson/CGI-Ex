@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.17';
+$VERSION = '2.18';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -120,6 +120,7 @@ sub validate {
             push @$fields, { %{$val_hash->{$field}}, field => $field };
         }
     }
+    return if ! $fields;
 
     ### Finally we have our arrayref of hashrefs that each have their 'field' key
     ### now lets do the validation
