@@ -13,7 +13,7 @@ BEGIN {
     eval { use Scalar::Util };
 }
 
-our $VERSION = '2.18';
+our $VERSION = '2.19';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -332,7 +332,15 @@ sub template_obj {
     my ($self, $args) = @_;
     return $self->{'template_obj'} || do {
         require Template::Alloy;
-        my $t = Template::Alloy->new($args);
+        Template::Alloy->new($args);
+    };
+}
+
+sub auth_obj {
+    my ($self, $args) = @_;
+    return $self->{'auth_obj'} || do {
+        require CGI::Ex::Auth;
+        CGI::Ex::Auth->new($args);
     };
 }
 
@@ -365,7 +373,9 @@ sub conf {
     $self->{'conf'} = pop if @_ == 1;
     return $self->{'conf'} ||= do {
         my $conf = $self->conf_file;
-        $conf = ($self->conf_obj->read($conf, {no_warn_on_fail => 1}) || $self->conf_die_on_fail ? croak $@ : {}) if ! $conf;
+        if (! ref $conf) {
+            $conf = $self->conf_obj->read($conf, {no_warn_on_fail => 1}) || $self->conf_die_on_fail ? croak $@ : {};
+        }
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
             my $err_obj = $self->val_obj->validate($conf, $hash);
@@ -935,8 +945,7 @@ sub _do_auth {
     $args->{'verify_user'}      ||= sub { my ($auth, $user) = @_; $self->verify_user(     $user, $auth) };
     $args->{'cleanup_user'}     ||= sub { my ($auth, $user) = @_; $self->cleanup_user(    $user, $auth) };
 
-    require CGI::Ex::Auth;
-    my $obj = CGI::Ex::Auth->new($args);
+    my $obj  = $self->auth_obj($args);
     my $resp = $obj->get_valid_auth;
 
     my $data = $obj->last_auth_data;

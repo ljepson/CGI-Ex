@@ -1,11 +1,14 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         CGI-Ex
-version:      2.18
-version_from: lib/CGI/Ex.pm
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                CGI-Ex
+version:             2.19
+abstract:            CGI utility suite - makes powerful application writing fun and easy
+license:             ~
+generated_by:        ExtUtils::MakeMaker version 6.36
+distribution_type:   module
+requires:     
     Template::Alloy:               1.004
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30_01
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.2.html
+    version: 1.2
+author:
+    - Paul Seamons
