@@ -13,7 +13,7 @@ BEGIN {
     eval { use Scalar::Util };
 }
 
-our $VERSION = '2.19';
+our $VERSION = '2.20';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -374,7 +374,7 @@ sub conf {
     return $self->{'conf'} ||= do {
         my $conf = $self->conf_file;
         if (! ref $conf) {
-            $conf = $self->conf_obj->read($conf, {no_warn_on_fail => 1}) || $self->conf_die_on_fail ? croak $@ : {};
+            $conf = $self->conf_obj->read($conf, {no_warn_on_fail => 1}) || ($self->conf_die_on_fail ? croak $@ : {});
         }
         my $hash = $self->conf_validation;
         if ($hash && scalar keys %$hash) {
