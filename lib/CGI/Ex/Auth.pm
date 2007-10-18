@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.20';
+$VERSION = '2.21';
 
 ###----------------------------------------------------------------###
 
@@ -48,6 +48,8 @@ sub get_valid_auth {
         local $self->{'no_set_cookie'}    = 1;
         local $self->{'no_cookie_verify'} = 1;
         $self->check_valid_auth; # verify the logout so we can capture the username if possible
+
+        $self->logout_hook;
 
         if ($self->bounce_on_logout) {
             my $key_c = $self->key_cookie;
@@ -88,7 +90,6 @@ sub get_valid_auth {
                     user        => delete $hash->{$key},
                     test_pass   => delete $hash->{ $self->key_pass },
                     expires_min => delete($hash->{ $self->key_save }) ? -1 : delete($hash->{ $self->key_expires_min }) || $self->expires_min,
-                    payload     => delete $hash->{ $self->key_payload } || '',
                 },
                 from => 'form',
             }) || next;
@@ -99,12 +100,13 @@ sub get_valid_auth {
         }
 
         ### generate a fresh cookie if they submitted info on plaintext types
-        if ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt')) {
+        if ($is_form
+            && ($self->use_plaintext || ($data->{'type'} && $data->{'type'} eq 'crypt'))) {
             $self->set_cookie({
                 key        => $self->key_cookie,
                 val        => $self->generate_token($data),
                 no_expires => ($data->{ $self->key_save } ? 0 : 1), # make it a session cookie unless they ask for saving
-            }) if $is_form; # only set the cookie if we found info in the form - the cookie will be a session cookie after that
+            });
 
         ### always generate a cookie on types that have expiration
         } else {
@@ -155,6 +157,14 @@ sub handle_success {
 sub success_hook {
     my $self = shift;
     if (my $meth = $self->{'success_hook'}) {
+        return $meth->($self);
+    }
+    return;
+}
+
+sub logout_hook {
+    my $self = shift;
+    if (my $meth = $self->{'logout_hook'}) {
         return $meth->($self);
     }
     return;
@@ -287,7 +297,6 @@ sub key_expires_min  { shift->{'key_expires_min'}  ||= 'cea_expires_min' }
 sub form_name        { shift->{'form_name'}        ||= 'cea_form'     }
 sub key_verify       { shift->{'key_verify'}       ||= 'cea_verify'   }
 sub key_redirect     { shift->{'key_redirect'}     ||= 'cea_redirect' }
-sub key_payload      { shift->{'key_payload'}      ||= 'cea_payload'  }
 sub key_loggedout    { shift->{'key_loggedout'}    ||= 'loggedout'    }
 sub bounce_on_logout { shift->{'bounce_on_logout'} ||= 0              }
 sub secure_hash_keys { shift->{'secure_hash_keys'} ||= []             }
@@ -299,6 +308,7 @@ sub use_plaintext    { my $s = shift; $s->use_crypt || ($s->{'use_plaintext'} ||
 sub use_base64       { my $s = shift; $s->{'use_base64'}  = 1      if ! defined $s->{'use_base64'};  $s->{'use_base64'}  }
 sub expires_min      { my $s = shift; $s->{'expires_min'} = 6 * 60 if ! defined $s->{'expires_min'}; $s->{'expires_min'} }
 sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
+sub disable_simple_cram { shift->{'disable_simple_cram'} }
 
 sub logout_redirect {
     my ($self, $user) = @_;
@@ -371,17 +381,14 @@ sub login_hash_common {
         key_time           => $self->key_time,
         key_save           => $self->key_save,
         key_expires_min    => $self->key_expires_min,
-        key_payload        => $self->key_payload,
         key_redirect       => $self->key_redirect,
         form_name          => $self->form_name,
         script_name        => $self->script_name,
         path_info          => $self->path_info,
         md5_js_path        => $self->js_uri_path ."/CGI/Ex/md5.js",
-        use_plaintext      => $self->use_plaintext,
         $self->key_user    => $data->{'user'} || '',
         $self->key_pass    => '', # don't allow for this to get filled into the form
         $self->key_time    => $self->server_time,
-        $self->key_payload => $self->generate_payload({%$data, login_form => 1}),
         $self->key_expires_min => $self->expires_min,
         text_user          => $self->text_user,
         text_pass          => $self->text_pass,
@@ -541,9 +548,10 @@ sub verify_password {
             }
         }
 
-    ### looks like a normal cram
+    ### looks like a simple_cram
     } elsif ($data->{'cram_time'}) {
-        $data->add_data(type => 'cram');
+        $data->add_data(type => 'simple_cram');
+        die "Type simple_cram disabled during verify_password" if $self->disable_simple_cram;
         my $real = $pass =~ /^[a-f0-9]{32}$/ ? lc($pass) : md5_hex($pass);
         my $str  = join("/", @{$data}{qw(user cram_time expires_min payload)});
         my $sum  = md5_hex($str .'/'. $real);
@@ -595,7 +603,7 @@ sub generate_token {
         my $pass = defined($data->{'test_pass'}) ? $data->{'test_pass'} : $data->{'real_pass'};
         $token = $data->{'user'} .'/'. $pass;
 
-    ### all other types go to cram - secure_hash_cram, cram, plaintext and md5
+    ### all other types go to cram - secure_hash_cram, simple_cram, plaintext and md5
     } else {
         my $user = $data->{'user'} || die "Missing user";
         my $real = defined($data->{'real_pass'})   ? ($data->{'real_pass'} =~ /^[a-f0-9]{32}$/ ? lc($data->{'real_pass'}) : md5_hex($data->{'real_pass'}))
@@ -606,7 +614,7 @@ sub generate_token {
         die "User can not contain a \"/\."                                           if $user =~ m|/|;
 
         my $array;
-        if (! $data->{'prefer_cram'}
+        if (! $data->{'prefer_simple_cram'}
             && ($array = eval { $self->secure_hash_keys })
             && @$array) {
             my $rand1 = int(rand @$array);
@@ -615,6 +623,7 @@ sub generate_token {
             my $sum = md5_hex($str .'/'. $real .('/sh.'.$array->[$rand1].'.'.$rand2));
             $token  = $str .'/'. $sum . '/sh.'.$rand1.'.'.$rand2;
         } else {
+            die "Type simple_cram disabled during generate_token" if $self->disable_simple_cram;
             my $str = join("/", $user, $self->server_time, $exp, $load);
             my $sum = md5_hex($str .'/'. $real);
             $token  = $str .'/'. $sum;
@@ -737,7 +746,6 @@ sub login_form {
     <span class="login_error">[% error %]</span>
     <form class="login_form" name="[% form_name %]" method="POST" action="[% script_name %][% path_info %]">
     <input type="hidden" name="[% key_redirect %]" value="">
-    <input type="hidden" name="[% key_payload %]" value="">
     <input type="hidden" name="[% key_time %]" value="">
     <input type="hidden" name="[% key_expires_min %]" value="">
     <table class="login_table">
@@ -774,8 +782,10 @@ sub hide_save   { my $self = shift; return defined($self->{'hide_save'})   ? $se
 sub text_submit { my $self = shift; return defined($self->{'text_submit'}) ? $self->{'text_submit'} : 'Login' }
 
 sub login_script {
-    return shift->{'login_script'} || q {
-    [%~ IF ! use_plaintext %]
+    my $self = shift;
+    return $self->{'login_script'} if $self->{'login_script'};
+    return '' if $self->use_plaintext || $self->disable_simple_cram;
+    return q {
     <form name="[% form_name %]_jspost" style="margin:0px" method="POST">
     <input type="hidden" name="[% key_user %]"><input type="hidden" name="[% key_redirect %]">
     </form>
@@ -787,9 +797,8 @@ sub login_script {
       var p = f.[% key_pass %].value;
       var t = f.[% key_time %].value;
       var s = f.[% key_save %] && f.[% key_save %].checked ? -1 : f.[% key_expires_min %].value;
-      var l = f.[% key_payload %].value;
 
-      var str = u+'/'+t+'/'+s+'/'+l;
+      var str = u+'/'+t+'/'+s+'/'+'';
       var sum = document.md5_hex(str +'/' + document.md5_hex(p));
 
       var f2 = document.[% form_name %]_jspost;
@@ -800,7 +809,6 @@ sub login_script {
       return false;
     }
     </script>
-    [% END ~%]
   };
 }
 
@@ -887,7 +895,7 @@ CGI::Ex::Auth allows for auto-expiring, safe and easy web based logins.  Auth us
 javascript modules that perform MD5 hashing to cram the password on
 the client side before passing them through the internet.
 
-For the stored cookie you can choose to use cram mechanisms,
+For the stored cookie you can choose to use simple cram mechanisms,
 secure hash cram tokens, auto expiring logins (not cookie based),
 and Crypt::Blowfish protection.  You can also choose to keep
 passwords plaintext and to use perl's crypt for testing
@@ -915,11 +923,11 @@ or may be passed as properties to the new constuctor such as in the following:
         get_pass_by_user => \&my_pass_sub,
         key_user         => 'my_user',
         key_pass         => 'my_pass',
-        login_template   => \"<form><input name=my_user ... </form>",
+        login_header     => \"<h1>My Login</h1>",
     });
 
 The following methods will look for properties of the same name.  Each of these will be
-defined separately.
+described separately.
 
     cgix
     cleanup_user
@@ -933,7 +941,6 @@ defined separately.
     key_expires_min
     key_logout
     key_pass
-    key_payload
     key_redirect
     key_save
     key_time
@@ -950,6 +957,7 @@ defined separately.
     handle_failure
     success_hook
     failure_hook
+    logout_hook
     no_cookie_verify
     path_info
     script_name
@@ -992,9 +1000,10 @@ Possible arguments are:
                      types.
     payload        - a payload that will be passed to generate_payload and then
                      will be added to cram type tokens.  It cannot contain a /.
-    prefer_cram    - If the secure_hash_keys method returns keys, and it is a non-plaintext
+    prefer_simple_cram
+                   - If the secure_hash_keys method returns keys, and it is a non-plaintext
                      token, generate_token will create a secure_hash_cram.  Set
-                     this value to true to tell it to use a normal cram.  This
+                     this value to true to tell it to use a simple_cram.  This
                      is generally only useful in testing.
 
 The following are types of tokens that can be generated by generate_token.  Each type includes
@@ -1019,7 +1028,7 @@ pseudocode and a sample of a generated that token.
         of the password but the get_pass_by_user hook returns the crypt'ed password, the
         token will not be able to be verified.
 
-    cram:
+    simple_cram:
         user        := "paul"
         real_pass   := "123qwe"
         server_time := 1148512991         # a time in seconds since epoch
@@ -1104,17 +1113,14 @@ Passed to the template swapped during login_print.
     key_pass           # $self->key_pass,        # the password fieldname
     key_time           # $self->key_time,        # the server time field name
     key_save           # $self->key_save,        # the save password checkbox field name
-    key_payload        # $self->key_payload,     # the payload fieldname
     key_redirect       # $self->key_redirect,    # the redirect fieldname
     form_name          # $self->form_name,       # the name of the form
     script_name        # $self->script_name,     # where the server will post back to
     path_info          # $self->path_info,       # $ENV{PATH_INFO} if any
     md5_js_path        # $self->js_uri_path ."/CGI/Ex/md5.js", # script for cramming
-    use_plaintext      # $self->use_plaintext,   # used to avoid cramming
     $self->key_user    # $data->{'user'},        # the username (if any)
     $self->key_pass    # '',                     # intentional blankout
     $self->key_time    # $self->server_time,     # the server's time
-    $self->key_payload # $data->{'payload'}      # the payload (if any)
     $self->key_expires_min # $self->expires_min  # how many minutes crams are valid
     text_user          # $self->text_user        # template text Username:
     text_pass          # $self->text_pass        # template text Password:
@@ -1316,6 +1322,18 @@ The text items shown in the default login template.  The default values are:
     text_user  "Username:"
     text_pass  "Password:"
     text_save  "Save Password ?"
+
+=item C<disable_simple_cram>
+
+Disables simple cram type from being an available type. Default is
+false.  If set, then one of use_plaintext, use_crypt, or
+secure_hash_keys should be set.  Setting this option allows for
+payloads to be generated by the server only - otherwise a user who
+understands the algorithm could generate a valid simple_cram cookie
+with a custom payload.
+
+Another option would be to only accept payloads from tokens if use_blowfish
+is set and armor was equal to "blowfish."
 
 =back
 
