@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.21';
+$VERSION = '2.22';
 
 ###----------------------------------------------------------------###
 
@@ -74,6 +74,7 @@ sub get_valid_auth {
         next if ! defined $hash->{$key};
         last if ! $is_form && $had_form_data;  # if form info was passed in - we must use it only
         $had_form_data = 1 if $is_form;
+        next if ! length $hash->{$key};
 
         ### if it looks like a bare username (as in they didn't have javascript) - add in other items
         my $data;
@@ -403,7 +404,7 @@ sub login_hash_common {
 sub verify_token {
     my $self  = shift;
     my $args  = shift;
-    my $token = delete $args->{'token'} || die "Missing token";
+    my $token = delete $args->{'token'}; die "Missing token" if ! length $token;
     my $data  = $self->new_auth_data({token => $token, %$args});
     my $meth;
 

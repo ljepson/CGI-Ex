@@ -29,7 +29,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.21';
+$VERSION = '2.22';
 
 $DEFAULT_EXT = 'conf';
 
@@ -262,6 +262,7 @@ sub read_handler_json {
   open (IN, $file) || die "Couldn't open $file: $!";
   CORE::read(IN, my $text, -s $file);
   close IN;
+  require JSON;
   return scalar JSON::jsonToObj($text);
 }
 
