@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.22';
+$VERSION = '2.23';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -124,9 +124,13 @@ sub validate {
 
     ### Finally we have our arrayref of hashrefs that each have their 'field' key
     ### now lets do the validation
+    $self->{'was_checked'} = {};
+    $self->{'was_valid'} = {};
+    $self->{'had_error'} = {};
     my $found  = 1;
     my @errors;
     my $hold_error; # hold the error for a moment - to allow for an "OR" operation
+    my %checked;
     foreach (my $i = 0; $i < @$fields; $i++) {
         my $ref = $fields->[$i];
         if (! ref($ref) && $ref eq 'OR') {
@@ -135,15 +139,24 @@ sub validate {
             next;
         }
         $found = 1;
-        die "Missing field key during normal validation" if ! $ref->{'field'};
+        my $field = $ref->{'field'} || die "Missing field key during normal validation";
+        if (! $checked{$field}++) {
+            $self->{'was_checked'}->{$field} = 1;
+            $self->{'was_valid'}->{$field} = 1;
+            $self->{'had_error'}->{$field} = 0;
+        }
         local $ref->{'was_validated'} = 1;
-        my $err = $self->validate_buddy($form, $ref->{'field'}, $ref);
+        my $err = $self->validate_buddy($form, $field, $ref);
         if ($ref->{'was_validated'} && $what_was_validated) {
             push @$what_was_validated, $ref;
+        } else {
+            $self->{'was_valid'}->{$field} = 0;
         }
 
         ### test the error - if errors occur allow for OR - if OR fails use errors from first fail
         if ($err) {
+            $self->{'was_valid'}->{$field} = 0;
+            $self->{'had_error'}->{$field} = 0;
             if ($i < $#$fields && ! ref($fields->[$i + 1]) && $fields->[$i + 1] eq 'OR') {
                 $hold_error = $err;
             } else {
@@ -210,7 +223,11 @@ sub check_conditional {
         $found = 1; # reset
         next;
       } else {
-        if ($ref =~ s/^\s*!\s*//) {
+        if ($ref =~ /^function\s*\(/) {
+          next;
+        } elsif ($ref =~ /^(.*?)\s+(was_valid|had_error|was_checked)$/) {
+          $ref = {field => $1, $2 => 1};
+        } elsif ($ref =~ s/^\s*!\s*//) {
           $ref = {field => $ref, max_in_set => "0 of $ref"};
         } else {
           $ref = {field => $ref, required => 1};
@@ -260,6 +277,10 @@ sub validate_buddy {
     }
     return @errors ? \@errors : 0;
   }
+
+  if ($field_val->{was_valid}   && ! $self->{'_was_valid'}->{$field})   { return [[$field, 'was_valid',   $field_val, $ifs_match]]; }
+  if ($field_val->{had_error}   && ! $self->{'_had_error'}->{$field})   { return [[$field, 'had_error',   $field_val, $ifs_match]]; }
+  if ($field_val->{was_checked} && ! $self->{'_was_checked'}->{$field}) { return [[$field, 'was_checked', $field_val, $ifs_match]]; }
 
   my $values   = UNIVERSAL::isa($form->{$field},'ARRAY') ? $form->{$field} : [$form->{$field}];
   my $n_values = $#$values + 1;
@@ -1491,6 +1512,18 @@ Allows for comparison of two form elements.  Can have an optional !.
       equals => '!domain2', # make sure the fields are not the same
     }
 
+=item C<had_error>
+
+Typically used by a validate_if.  Allows for checking if this item has had
+an error.
+
+    {
+       field => 'alt_password',
+       validate_if => {field => 'password', had_error => 1},
+    }
+
+This is basically the opposite of was_valid.
+
 =item C<match>
 
 Allows for regular expression comparison.  Multiple matches may
@@ -1604,6 +1637,10 @@ if the conditions are met.  Works in JS.
     # SAME as
     validate_if => {field => 'name', max_in_set => '0 of name'},
 
+    validate_if => 'name was_valid',
+    # SAME as
+    validate_if => {field => 'name', was_valid => 1},
+
     validate_if => {field => 'country', compare => "eq US"},
     # only if country's value is equal to US
 
@@ -1632,6 +1669,18 @@ the item after 'OR' will be tested instead.  If the item preceding 'OR'
 passes validation the item after 'OR' will not be tested.
 
     validate_if => [qw(zip OR postalcode)],
+
+=item C<was_valid>
+
+Typically used by a validate_if.  Allows for checking if this item has successfully
+been validated.
+
+    {
+       field => 'password2',
+       validate_if => {field => 'password', was_valid => 1},
+    }
+
+This is basically the opposite of was_valid.
 
 =back
 
@@ -1699,6 +1748,13 @@ being run in the cgi
       required    => 1,
       exclude_cgi => 1,
     }
+
+=item C<vif_disable>
+
+Only functions in javascript.  Will mark set the form element to
+disabled if validate_if fails.  It will mark it as enabled if
+validate_if is successful.  This item should normally only be used
+when onevent includes "change" or "blur".
 
 =back
 
@@ -1978,14 +2034,14 @@ a string that will be postpended on to the error string.
 =item C<onevent>
 
 Defaults to {submit => 1}.  This controls when the javascript validation
-will take place.  May be passed any or all or submit, change, or blur.
+will take place.  May be passed any or all or load, submit, change, or blur.
 Multiple events may be passed in the hash.
 
     'group onevent' => {submit => 1, change => 1}',
 
 A comma separated string of types may also be passed:
 
-    'group onevent' => 'submit,change,blur',
+    'group onevent' => 'submit,change,blur,load',
 
 Currently, change and blur will not work for dynamically matched
 field names such as 'm/\w+/'.  Support will be added.
@@ -2002,9 +2058,11 @@ inline error.  This gives full control over setting inline
 errors. samples/validate_js_2_onchange.html has a good example of
 using these hooks.
 
-    'group set_hook' => "function (key, val, val_hash, form) {
-      alert("Setting error to field "+key);
+    'group set_hook' => "function (args) {
+      alert("Setting error to field "+args.key);
     }",
+
+The args parameter includes key, value, val_hash, and form.
 
 The document.validate_set_hook option is probably the better option to use,
 as it helps to separate display functionality out into your html templates
@@ -2016,9 +2074,11 @@ Similar to set_hook, but called when inline error is cleared.  Its
 corresponding default is document.validate_clear_hook.  The clear hook
 is also sampled in samples/validate_js_2_onchange.html
 
-    'group clear_hook' => "function (key, val_hash, form) {
-      alert("Clear error on field "+key);
+    'group clear_hook' => "function (args) {
+      alert("Clear error on field "+args.key);
     }",
+
+The args parameter includes key, val_hash, form, and was_valid.
 
 =item C<no_inline>
 
@@ -2159,20 +2219,25 @@ to submit as normal (fail gracefully).
 
 Additionally, there are two hooks that are called when ever an inline
 error is set or cleared.  The following hooks are used in
-samples/validate_js_2_onchange.html.
+samples/validate_js_2_onchange.html to highlight the row and set an icon.
 
-    document.validate_set_hook = function (key, val, val_hash, form) {
-      document.getElementById(key+'_img').innerHTML
+    document.validate_set_hook = function (args) {
+      document.getElementById(args.key+'_img').innerHTML
         = '<span style="font-weight:bold;color:red">!</span>';
-      document.getElementById(key+'_row').style.background
+      document.getElementById(args.key+'_row').style.background
         = '#ffdddd';
     };
 
-    document.validate_clear_hook = function (key, val_hash, form) {
-      document.getElementById(key+'_img').innerHTML
-        = '<span style="font-weight:bold;color:green">+</span>';
-      document.getElementById(key+'_row').style.background
-        = '#ddffdd';
+    document.validate_clear_hook = function (args) {
+      if (args.was_valid) {
+       document.getElementById(args.key+'_img').innerHTML
+         = '<span style="font-weight:bold;color:green">+</span>';
+       document.getElementById(args.key+'_row').style.background
+         = '#ddffdd';
+      } else {
+       document.getElementById(args.key+'_img').innerHTML = '';
+       document.getElementById(args.key+'_row').style.background = '#fff';
+      }
     };
 
 These hooks can also be set as "group clear_hook" and "group set_hook"
