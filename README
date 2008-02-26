@@ -276,6 +276,10 @@ CGI::Ex METHODS
         shortened name which will be looked for in @INC. (ie
         /full/path/to/my.js or CGI/Ex/validate.js or CGI::Ex::validate)
 
+            #!/usr/bin/perl
+            use CGI::Ex;
+            CGI::Ex->print_js($ENV{'PATH_INFO'});
+
     "->swap_template"
         This is intended as a simple yet strong subroutine to swap in tags
         to a document. It is intended to be very basic for those who may not

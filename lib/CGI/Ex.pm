@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.23';
+    $VERSION               = '2.24';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -486,7 +486,7 @@ sub print_js {
 
     ### get file info
     my $stat;
-    if ($js_file && $js_file =~ m|^(\w+(?:/+\w+)*\.js)$|i) {
+    if ($js_file && $js_file =~ m|^/+?(\w+(?:/+\w+)*\.js)$|i) {
         foreach my $path (@INC) {
             my $_file = "$path/$1";
             next if ! -f $_file;
@@ -978,6 +978,10 @@ Prints out a javascript file.  Does everything it can to make sure
 that the javascript will cache.  Takes either a full filename,
 or a shortened name which will be looked for in @INC. (ie /full/path/to/my.js
 or CGI/Ex/validate.js or CGI::Ex::validate)
+
+    #!/usr/bin/perl
+    use CGI::Ex;
+    CGI::Ex->print_js($ENV{'PATH_INFO'});
 
 =item C<-E<gt>swap_template>
 

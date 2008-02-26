@@ -22,7 +22,7 @@ use vars qw($VERSION
             @UNSUPPORTED_BROWSERS
             );
 
-$VERSION = '2.23';
+$VERSION = '2.24';
 
 $DEFAULT_EXT   = 'val';
 $QR_EXTRA      = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
@@ -661,13 +661,7 @@ sub check_type {
     return 0 if $value =~ m/(\.\-|\-\.|\.\.)/;
     return 0 if length($value) > 255;
     return 0 if $value !~ s/\.([a-z]+)$//;
-
-    my $ext = $1;
-    if ($ext eq 'name') { # .name domains
-      return 0 if $value !~ /^[a-z0-9][a-z0-9\-]{0,62} \. [a-z0-9][a-z0-9\-]{0,62}$/x;
-    } else {              # any other domains
-      return 0 if $value !~ /^([a-z0-9][a-z0-9\-]{0,62} \.)* [a-z0-9][a-z0-9\-]{0,62}$/x;
-    }
+    return 0 if $value !~ /^([a-z0-9][a-z0-9\-]{0,62} \.)* [a-z0-9][a-z0-9\-]{0,62}$/x;
 
   ### validate a url
   } elsif ($type eq 'URL') {

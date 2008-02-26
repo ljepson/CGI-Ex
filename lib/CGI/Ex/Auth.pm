@@ -18,7 +18,7 @@ use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 
-$VERSION = '2.23';
+$VERSION = '2.24';
 
 ###----------------------------------------------------------------###
 
@@ -334,19 +334,20 @@ sub no_cookies_print {
 sub login_print {
     my $self = shift;
     my $hash = $self->login_hash_common;
-    my $template = $self->login_template;
+    my $file = $self->login_template;
 
     ### allow for a hooked override
     if (my $meth = $self->{'login_print'}) {
-        $meth->($self, $template, $hash);
+        $meth->($self, $file, $hash);
         return 0;
     }
 
     ### process the document
-    require CGI::Ex::Template;
-    my $cet = CGI::Ex::Template->new($self->template_args);
+    my $args = $self->template_args;
+    $args->{'INCLUDE_PATH'} ||= $args->{'include_path'} || $self->template_include_path,
+    my $t = $self->template_obj($args);
     my $out = '';
-    $cet->process_simple($template, $hash, \$out) || die $cet->error;
+    $t->process_simple($file, $hash, \$out) || die $t->error;
 
     ### fill in form fields
     require CGI::Ex::Fill;
@@ -359,14 +360,17 @@ sub login_print {
     return 0;
 }
 
-sub template_args {
-    my $self = shift;
-    return $self->{'template_args'} ||= {
-        INCLUDE_PATH => $self->template_include_path,
+sub template_obj {
+    my ($self, $args) = @_;
+    return $self->{'template_obj'} || do {
+        require Template::Alloy;
+        Template::Alloy->new($args);
     };
 }
 
-sub template_include_path { shift->{'template_include_path'} || '' }
+sub template_args { $_[0]->{'template_args'} ||= {} }
+
+sub template_include_path { $_[0]->{'template_include_path'} || '' }
 
 sub login_hash_common {
     my $self = shift;
@@ -892,9 +896,10 @@ __END__
 
 =head1 DESCRIPTION
 
-CGI::Ex::Auth allows for auto-expiring, safe and easy web based logins.  Auth uses
-javascript modules that perform MD5 hashing to cram the password on
-the client side before passing them through the internet.
+CGI::Ex::Auth allows for auto-expiring, safe and easy web based
+logins.  Auth uses javascript modules that perform MD5 hashing to cram
+the password on the client side before passing them through the
+internet.
 
 For the stored cookie you can choose to use simple cram mechanisms,
 secure hash cram tokens, auto expiring logins (not cookie based),
@@ -902,12 +907,21 @@ and Crypt::Blowfish protection.  You can also choose to keep
 passwords plaintext and to use perl's crypt for testing
 passwords.
 
-A downside to this module is that it does not use a session to
-preserve state so get_pass_by_user has to happen on every request (any
-authenticated area has to verify authentication each time).  A plus is
-that you don't need to use a session if you don't want to.  It is up
-to the interested reader to add caching to the get_pass_by_user
+A theoretical downside to this module is that it does not use a
+session to preserve state so get_pass_by_user has to happen on every
+request (any authenticated area has to verify authentication each
+time).  In theory you should be checking the password everytime a user
+makes a request to make sure the password is still valid.  A definite
+plus is that you don't need to use a session if you don't want to.  It
+is up to the interested reader to add caching to the get_pass_by_user
 method.
+
+In the end, the only truly secure login method is across an https
+connection.  Any connection across non-https (non-secure) is
+susceptible to cookie hijacking or tcp hijacking - though the
+possibility of this is normally small and typically requires access to
+a machine somewhere in your TCP chain.  If in doubt - you should try
+to use https.
 
 =head1 METHODS
 
@@ -965,6 +979,7 @@ described separately.
     secure_hash_keys
     template_args
     template_include_path
+    template_obj
     text_user
     text_pass
     text_save
