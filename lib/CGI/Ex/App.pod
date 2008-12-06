@@ -207,9 +207,8 @@ The nav_loop method will run as follows:
             ->require_auth (hook)
                 # exits nav_loop if true
 
-            ->morph
+            ->morph (hook)
                 # check ->allow_morph (hook)
-                # check ->allow_nested_morph
                 # ->morph_package (hook - get the package to bless into)
                 # ->fixup_after_morph if morph_package exists
                 # if no package is found, process continues in current file
@@ -223,8 +222,7 @@ The nav_loop method will run as follows:
                 ->next_step (hook) # find next step and add to path
                 ->set_ready_validate(0) (hook)
 
-            ->unmorph
-                # only called if morph worked
+            ->unmorph (hook)
                 # ->fixup_before_unmorph if blessed to current package
 
             # exit loop if ->run_step returned true (page printed)
@@ -282,8 +280,8 @@ during the run_step hook.
                 # merge form, base, common, swap, and errors into merged swap
                 ->print (hook - passed current step, merged swap hash, and merged fill)
                      ->file_print (hook - uses base_dir_rel, name_module, name_step, ext_print)
-                     ->swap_template (hook - processes the file with CGI::Ex::Template)
-                          ->template_args (hook - passed to CGI::Ex::Template->new)
+                     ->swap_template (hook - processes the file with Template::Alloy)
+                          ->template_args (hook - passed to Template::Alloy->new)
                      ->fill_template (hook - fills the any forms with CGI::Ex::Fill)
                           ->fill_args (hook - passed to CGI::Ex::Fill::fill)
                      ->print_out (hook - print headers and the content to STDOUT)
@@ -529,11 +527,11 @@ filling.
 See the hash_base, hash_common, hash_form, hash_swap, hash_errors,
 swap_template, and template_args hooks for more information.
 
-The default template engine used is CGI::Ex::Template which is now a subclass
-of Template::Alloy.  The default interface used is TT which is the
-Template::Toolkit interface.  Template::Alloy allows for using TT documents,
-HTML::Template documents, HTML::Template::Expr documents, Text::Tmpl documents,
-or Velocity (VTL) documents.  See the L<Template::Alloy> documentation
+The default template engine used is Template::Alloy.  The default
+interface used is TT which is the Template::Toolkit interface.
+Template::Alloy allows for using TT documents, HTML::Template
+documents, HTML::Template::Expr documents, Text::Tmpl documents, or
+Velocity (VTL) documents.  See the L<Template::Alloy> documentation
 for more information.
 
 =head1 ADDING ADDITIONAL FORM FILL VARIABLES
@@ -843,7 +841,7 @@ completed (various methods determine the definition of "completed").
 This preset type of path can also be automated using the CGI::Path
 module.  Rather than using a preset path, CGI::Ex::App also has
 methods that allow for dynamic changing of the path, so that each step
-can determine which step to do next (see the jump, append_path,
+can determine which step to do next (see the goto_step, append_path,
 insert_path, and replace_path methods).
 
 During development it would be nice to see what happened during the
@@ -989,16 +987,27 @@ object into another package.  Default is false.  It is passed a single
 argument of the current step.  For more granularity, if true value is
 a hash, the step being morphed to must be in the hash.
 
+If the returned value is "1", and the module doesn't exist, then the
+App will continue to run blessed into the current package.  If there
+is an error requiring the module or if the module doesn't exist and
+the return value is "2" (true but not 1), then App will die with the
+appropriate error.
+
 To enable morphing for all steps, add the following:
+(Packages that don't exists won't be morphed to)
 
     sub allow_morph { 1 }
+
+To force morphing for all steps add the following:
+
+    sub allow_morph { 2 }
 
 To enable morph on specific steps, do either of the following:
 
     sub allow_morph {
         return {
             edit => 1,
-            delete => 1,
+            delete => 2, # must morph
         };
     }
 
@@ -1006,21 +1015,12 @@ To enable morph on specific steps, do either of the following:
 
     sub allow_morph {
         my ($self, $step) = @_;
-        return $step =~ /^(edit|delete)$/;
+        return 1 if $step eq 'edit';
+        return 2 if $step eq 'delete';
+        return;
     }
 
 See the morph "hook" for more information.
-
-=item allow_nested_morph (method)
-
-Similar to the allow_morph hook, but allows for one more level of morphing.
-This is useful in cases where the base class was morphed early on, or
-if a step needs to call a sub-step but morph first.
-
-See the allow_morph and the morph method for more information.
-
-Should return a boolean value or hash of allowed steps - just as the
-allow_morph method does.
 
 =item append_path (method)
 
@@ -1284,7 +1284,7 @@ using it on a regular basis.  Essentially it is a "goto" that allows
 for a long jump to the end of all nav_loops (even if they are
 recursively nested).  This effectively short circuits all remaining
 hooks for the current and remaining steps.  It is used to allow the
-->jump functionality.  If the application has morphed, it will be
+->goto_step functionality.  If the application has morphed, it will be
 unmorphed before returning.  Also - the post_navigate method will
 still be called.
 
@@ -1491,6 +1491,63 @@ Full customization of the login process and the login template can
 be done via the auth_args hash.  See the auth_args method and
 CGI::Ex::Auth perldoc for more information.
 
+=item goto_step (method)
+
+This method is not normally used but can solve some difficult issues.
+It provides for moving to another step at any point during the
+nav_loop.  Once a goto_step has been called, the entire nav_loop will
+be exited (to simply replace a portion of a step, you can simply
+run_hook('run_step', 'other_step')).  The method goto_step effectively
+short circuits the remaining hooks for the current step.  It does
+increment the recursion counter (which has a limit of ->recurse_limit
+- default 15).  Normally you would allow the other hooks in the loop
+to carry on their normal functions and avoid goto_step.  (Essentially,
+this hook behaves like a goto method to bypass everything else and
+continue at a different location in the path - there are times when it
+is necessary or useful to do this).
+
+The method jump is an alias for this method.
+
+Goto_step takes a single argument which is the location in the path to
+jump to.  This argument may be either a step name, the special strings
+"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
+jump forward (or backward) in the path.  The default value, 1,
+indicates that CGI::Ex::App should jump to the next step (the default
+action for goto_step).  A value of 0 would repeat the current step
+(watch out for recursion).  A value of -1 would jump to the previous
+step.  The special value of "LAST" will jump to the last step.  The
+special value of "FIRST" will jump back to the first step.  In each of
+these cases, the path array returned by ->path is modified to allow
+for the jumping (the path is modified so that the path history is not
+destroyed - if we were on step 3 and jumped to one, that path would
+contain 1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).  If a
+step name is not currently on the path, it will be replace any remaining
+steps of the path.
+
+    # goto previous step (repeat it)
+    $self->goto_step($self->previous_step);
+    $self->goto_step('PREVIOUS');
+    $self->goto_step(-1);
+
+    # goto next step
+    $self->goto_step($self->next_step);
+    $self->goto_step('NEXT');
+    $self->goto_step(1);
+    $self->goto_step;
+
+    # goto current step (repeat)
+    $self->goto_step($self->current_step);
+    $self->goto_step('CURRENT');
+    $self->goto_step(0);
+
+    # goto last step
+    $self->goto_step($self->last_step);
+    $self->goto_step('LAST');
+
+    # goto first step (repeat it)
+    $self->goto_step($self->first_step);
+    $self->goto_step('FIRST');
+
 =item handle_error (method)
 
 If anything dies during execution, handle_error will be called with
@@ -1649,76 +1706,24 @@ default "path" handler.
 
 =item js_validation (hook)
 
-Requires JSON or YAML.  Will return Javascript that is capable of
-validating the form.  This is done using the capabilities of
-CGI::Ex::Validate.  This will call the hook hash_validation which will
-then be encoded either json or into yaml and placed in a javascript
-string.  It will also call the hook form_name to determine which html
-form to attach the validation to.  The method js_uri_path is called to
-determine the path to the appropriate validate.js files.  If the
-method ext_val is htm, then js_validation will return an empty string
-as it assumes the htm file will take care of the validation itself.
-In order to make use of js_validation, it must be added to the
-variables returned by either the hash_base, hash_common, hash_swap or
-hash_form hook (see examples of hash_base used in this doc).
-
-By default it will try and use JSON first and then fail to YAML and
-then will fail to returning an html comment that does nothing.
+Will return Javascript that is capable of validating the form.  This
+is done using the capabilities of CGI::Ex::Validate and
+CGI::Ex::JSONDump.  This will call the hook hash_validation which will
+then be encoded into json and placed in a javascript string.  It will
+also call the hook form_name to determine which html form to attach
+the validation to.  The method js_uri_path is called to determine the
+path to the appropriate validate.js files.  In order to make use of
+js_validation, it must be added to the variables returned by either
+the hash_base (default), hash_common, hash_swap or hash_form hook (see
+examples of hash_base used in this doc).
 
 =item jump (method)
 
-This method should not normally be used but is fine to use it on a
-regular basis.  It provides for moving to the next step at any point
-during the nav_loop.  It effectively short circuits the remaining
-hooks for the current step.  It does increment the recursion counter
-(which has a limit of ->recurse_limit - default 15).  It is normally
-better to allow the other hooks in the loop to carry on their normal
-functions and avoid jumping.  (Essentially, this hook behaves like a
-goto method to bypass everything else and continue at a different
-location in the path - there are times when it is necessary or useful
-to do this).
-
-Jump takes a single argument which is the location in the path to jump
-to.  This argument may be either a step name, the special strings
-"FIRST, LAST, CURRENT, PREVIOUS, OR NEXT" or the number of steps to
-jump forward (or backward) in the path.  The default value, 1,
-indicates that CGI::Ex::App should jump to the next step (the default
-action for jump).  A value of 0 would repeat the current step (watch
-out for recursion).  A value of -1 would jump to the previous step.
-The special value of "LAST" will jump to the last step.  The special
-value of "FIRST" will jump back to the first step.  In each of these
-cases, the path array returned by ->path is modified to allow for the
-jumping (the path is modified so that the path history is not destroyed
-- if we were on step 3 and jumped to one, that path would contain
-1, 2, 3, *1, 2, 3, 4, etc and we would be at the *).
-
-    ### goto previous step
-    $self->jump($self->previous_step);
-    $self->jump('PREVIOUS');
-    $self->jump(-1);
-
-    ### goto next step
-    $self->jump($self->next_step);
-    $self->jump('NEXT');
-    $self->jump(1);
-    $self->jump;
-
-    ### goto current step (repeat)
-    $self->jump($self->current_step);
-    $self->jump('CURRENT');
-    $self->jump(0);
-
-    ### goto last step
-    $self->jump($self->last_step);
-    $self->jump('LAST');
-
-    ### goto first step
-    $self->jump($self->first_step);
-    $self->jump('FIRST');
+Alias for the goto_step method.
 
 =item last_step (method)
 
-Returns the last step of the path.  Can be used to jump to the last step.
+Returns the last step of the path.
 
 =item load_conf (method)
 
@@ -1741,9 +1746,9 @@ the step name to allow_morph.
 
 The morph call occurs at the beginning of the step loop.  A
 corresponding unmorph call occurs before the loop is exited.  An
-object can morph several levels deep if allow_nested_morph returns
-true. For example, an object running as Foo::Bar that is looping on
-the step "my_step" that has allow_morph = 1, will do the following:
+object can morph several levels deep.  For example, an object running
+as Foo::Bar that is looping on the step "my_step" that has allow_morph
+= 1, will do the following:
 
     Call the morph_package hook (which would default to returning
     Foo::Bar::MyStep in this case)
@@ -1761,57 +1766,11 @@ re-blesses the object into the original package.
 
 Samples of allowing morph:
 
-    sub allow_morph { 1 }
+    sub allow_morph { 1 } # value of 1 means try to find package, ok if not found
 
     sub allow_morph { {edit => 1} }
 
     sub allow_morph { my ($self, $step) = @_; return $step eq 'edit' }
-
-It is possible to call morph earlier on in the program.  An example of
-a useful early use of morph would be as in the following code:
-
-    sub allow_morph { 1 }
-
-    sub pre_navigate {
-        my $self = shift;
-        if ($ENV{'PATH_INFO'} && $ENV{'PATH_INFO'} =~ s|^/(\w+)||) {
-            my $step = $1;
-            $self->morph($step);
-            $ENV{'PATH_INFO'} = "/$step";
-            $self->stash->{'base_morphed'} = 1;
-        }
-        return 0;
-    }
-
-    sub post_navigate {
-        my $self = shift;
-        $self->unmorph if $self->stash->{'base_morphed'};
-    }
-
-If this code was in a module Base.pm and the cgi running was cgi/base
-and called:
-
-    Base->navigate;
-
-and you created a sub module that inherited Base.pm called
-Base/Ball.pm -- you could then access it using cgi/base/ball.  You
-would be able to pass it steps using either cgi/base/ball/step_name or
-cgi/base/ball?step=step_name - Or Base/Ball.pm could implement its
-own path.  It should be noted that if you do an early morph, it is
-suggested to provide a call to unmorph. And if you want to let your
-early morphed object morph again - you will need to provide
-
-    sub allow_nested_morph { 1 }
-
-With allow_nested_morph enabled you could create the file
-Base/Ball/StepName.pm which inherits Base/Ball.pm.  The Base.pm, with
-the custom init and default path method, would automatically morph us
-first into a Base::Ball object (during init) and then into a
-Base::Ball::StepName object (during the navigation loop).
-
-Since it is complicated to explain - it may be a bit complicated to
-those who will try to follow your code later.  CGI::Ex::App provides
-many ways to do things, but use the best one for your situation.
 
 =item morph_package (hook)
 
@@ -1892,11 +1851,8 @@ object has been blessed to allow for any other initilizations.
 
 =item next_step (hook and method)
 
-Returns the next step in the path.  If there is no next step, it
-returns the default_step.
-
-It can be used as a method to return the next step in the path
-to pass to a method such as ->jump.
+As a method it returns the next step in the path - if the path
+has more steps left.
 
 It is also used as a hook by the refine_path hook.  If there is no
 more steps, it will call the next_step hook to try and find a step to
@@ -2072,11 +2028,10 @@ List the step previous to this one.  Will return '' if there is no previous step
 
 Take the information generated by prepared_print, format it using
 swap_template, fill it using fill_template and print it out using
-print_out.  Default incarnation uses CGI::Ex::Template (a subclass of
-Template::Alloy) which is compatible with Template::Toolkit to do the
-swapping.  Arguments are: step name (used to call the file_print
-hook), swap hashref (passed to call swap_template), and fill hashref
-(passed to fill_template).
+print_out.  Default incarnation uses Template::Alloy which is
+compatible with Template::Toolkit to do the swapping.  Arguments are:
+step name (used to call the file_print hook), swap hashref (passed to
+call swap_template), and fill hashref (passed to fill_template).
 
 During the print call, the file_print hook is called which should
 return a filename or a scalar reference to the template content is
@@ -2130,11 +2085,11 @@ go to the _edit_success step.
 =item recurse_limit (method)
 
 Default 15.  Maximum number of times to allow nav_loop to call itself.
-The recurse level will increase every time that ->jump is called, or if
+The recurse level will increase every time that ->goto_step is called, or if
 the end of the nav_loop is reached and the process tries to add the
 default_step and run it again.
 
-If ->jump is used often - the recurse_limit will be reached more
+If ->goto_step is used often - the recurse_limit will be reached more
 quickly.  It is safe to raise this as high as is necessary - so long
 as it is intentional.
 
@@ -2263,6 +2218,21 @@ run_hook, it is possible to logically override methods on a step by
 step basis, or override a method for all of the steps, or even to
 break code out into separate modules.
 
+=item run_hook_as (method)
+
+Similar to run_hook - but allows for temporarily running a
+hook in another package.
+
+    sub blah_morph_package { 'SomeOther::Module' }
+    my $hash = $self->run_hook_as('hash_swap', 'blah'); # runs as SomeOther::Module
+
+    # OR
+
+    my $hash = $self->run_hook_as('hash_swap', 'SomeOther::Module');
+
+Note that the second form will use 'SomeOther::Module' as the step name
+which will be somewhat misleading in looking up names.
+
 =item run_step (hook)
 
 Runs all of the hooks specific to each step, beginning with pre_step
@@ -2337,8 +2307,7 @@ method to look for in the form.  Default value is 'step'.
 =item swap_template (hook)
 
 Takes the template and hash of variables prepared in print, and
-processes them through the current template engine (default engine is
-CGI::Ex::Template a subclass of Template::Alloy).
+processes them through the current template engine Template::Alloy.
 
 Arguments are the template and the swap hashref.  The template can be
 either a scalar reference to the actual content, or the filename of
@@ -2349,7 +2318,7 @@ default).
 The default method will create a template object by calling the
 template_args hook and passing the returned hashref to the
 template_obj method.  The default template_obj method returns a
-CGI::Ex::Template object, but could easily be swapped to use a
+Template::Alloy object, but could easily be swapped to use a
 Template::Toolkit based object.  If a non-Template::Toolkit compatible
 object is to be used, then the swap_template hook can be overridden to
 use another templating engine.
@@ -2378,8 +2347,8 @@ method as follows:
         return $t->output;
     }
 
-As of version 2.13 of CGI::Ex::Template you could also simply do the
-following to parse the templates using HTML::Template::Expr syntax.
+Uou could also simply do the following to parse the templates using
+HTML::Template::Expr syntax.
 
     sub template_args {
         return {SYNTAX => 'hte'};
@@ -2389,12 +2358,12 @@ For a listing of the available syntaxes, see the current L<Template::Alloy> docu
 
 =item template_args (hook)
 
-Returns a hashref of args that will be passed to the "new" method of CGI::Ex::Template.
+Returns a hashref of args that will be passed to the "new" method of Template::Alloy
 The method is normally called from the swap_template hook.  The swap_template hook
 will add a value for INCLUDE_PATH which is set equal to template_path, if the INCLUDE_PATH
 value is not already set.
 
-The returned hashref can contain any arguments that CGI::Ex::Template (a subclass of Template::Alloy)
+The returned hashref can contain any arguments that Template::Alloy
 would understand.
 
     sub template_args {
@@ -2409,10 +2378,9 @@ See the L<Template::Alloy> documentation for a listing of all possible configura
 =item template_obj (method)
 
 Called from swap_template.  It is passed the result of template_args
-that have had a default INCLUDE_PATH added via template_path.  The default
-implementation uses CGI::Ex::Template (a subclass of Template::Alloy)
-but can easily be changed to use Template::Toolkit by using code
-similar to the following:
+that have had a default INCLUDE_PATH added via template_path.  The
+default implementation uses Template::Alloy but can easily be changed
+to use Template::Toolkit by using code similar to the following:
 
     use Template;
 
@@ -2587,8 +2555,7 @@ different.
 Seemingly the most well know of application builders.
 CGI::Ex::App is different in that it:
 
-  * Uses Template::Toolkit compatible CGI::Ex::Template (a
-      subclass of Template::Alloy) by default.
+  * Uses Template::Toolkit compatible Template::Alloy by default.
       CGI::Ex::App can easily use another toolkit by simply
       overriding the ->swap_template method.
       CGI::Application uses HTML::Template.
@@ -2622,7 +2589,7 @@ There are actually many similarities.  One of the nicest things about
 CGI::Prototype is that it is extremely short (very very short).  The
 ->activate starts the application in the same manner as CGI::Ex::App's
 ->navigate call.  Both use Template::Toolkit as the default template
-system (CGI::Ex::App uses CGI::Ex::Template which is TT compatible).
+system (CGI::Ex::App uses Template::Alloy which is TT compatible).
 CGI::Ex::App is differrent in that it:
 
   * Offers more hooks into the various phases of each step.

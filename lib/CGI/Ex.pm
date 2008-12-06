@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.24';
+    $VERSION               = '2.27';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -417,7 +417,7 @@ sub time_calc {
         return time + ($m->{lc($3)} || 1) * "$1$2";
     } else {
         my @stat = stat $time;
-        die "Could not find file \"$time\" for time_calc" if $#stat == -1;
+        die "Could not find file \"$time\" for time_calc.  You should pass one of \"now\", time(), \"[+-] \\d+ [smhdwMy]\" or a filename." if $#stat == -1;
         return $stat[9];
     }
 }
@@ -486,7 +486,7 @@ sub print_js {
 
     ### get file info
     my $stat;
-    if ($js_file && $js_file =~ m|^/+?(\w+(?:/+\w+)*\.js)$|i) {
+    if ($js_file && $js_file =~ m|^/*(\w+(?:/+\w+)*\.js)$|i) {
         foreach my $path (@INC) {
             my $_file = "$path/$1";
             next if ! -f $_file;

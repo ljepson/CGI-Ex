@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2007 - Paul Seamons
+#  Copyright 2008 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.24';
+our $VERSION = '2.27';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -45,7 +45,13 @@ sub navigate {
         local $self->{'_morph_lineage_start_index'} = $#{$self->{'_morph_lineage'} || []};
         $self->nav_loop;
     };
-    $self->handle_error($@) if $@ && $@ ne "Long Jump\n"; # catch any errors
+    my $err = $@;
+    if ($err && (ref($err) || $err ne "Long Jump\n")) { # catch any errors
+        die $err if ! $self->can('handle_error');
+        if (! eval { $self->handle_error($err); 1 }) {
+            die "$err\nAdditionally, the following happened while calling handle_error: $@";
+        }
+    }
     $self->handle_error($@) if ! $self->{'_no_post_navigate'} && ! eval { $self->post_navigate; 1 } && $@ && $@ ne "Long Jump\n";
 
     $self->destroy;
@@ -69,8 +75,7 @@ sub nav_loop {
         my $step = $path->[$self->{'path_i'}];
         if ($step !~ /^([^\W0-9]\w*)$/) {
             $self->stash->{'forbidden_step'} = $step;
-            $self->replace_path($self->forbidden_step);
-            next;
+            $self->goto_step($self->forbidden_step);
         }
         $step = $1; # untaint
 
@@ -79,28 +84,19 @@ sub nav_loop {
             return if (ref($req) ? $req->{$step} : $req) && ! $self->run_hook('get_valid_auth', $step);
         }
 
-        $self->morph($step); # let steps be in external modules
+        $self->run_hook('morph', $step); # let steps be in external modules
 
-        if (my $info = $self->path_info) { # allow for mapping path_info pieces to form elements
-            my $maps = $self->run_hook('path_info_map', $step) || [];
-            croak 'Usage: sub path_info_map { [] }' if ! UNIVERSAL::isa($maps, 'ARRAY');
-            foreach my $map (@$maps) {
-                croak 'Usage: sub path_info_map { [[qr{/path_info/(\w+)}, "keyname"]] }' if ! UNIVERSAL::isa($map, 'ARRAY');
-                my @match = $info =~ $map->[0];
-                next if ! @match;
-                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
-                last;
-            }
-        }
+        # allow for mapping path_info pieces to form elements
+        $self->parse_path_info('path_info_map', $self->run_hook('path_info_map', $step));
 
         if ($self->run_hook('run_step', $step)) {
-            $self->unmorph($step);
+            $self->run_hook('unmorph', $step);
             return;
         }
 
         my $is_at_end = $self->{'path_i'} >= $#$path ? 1 : 0;
         $self->run_hook('refine_path', $step, $is_at_end); # no more steps - allow for this step to designate one to follow
-        $self->unmorph($step);
+        $self->run_hook('unmorph', $step);
     }
 
     return if $self->post_loop($path);
@@ -115,20 +111,11 @@ sub path {
     my $self = shift;
     return $self->{'path'} ||= do {
         my $path = [];
-        if (my $info = $self->path_info) { # add initial items to the form hash from path_info
-            my $maps = $self->path_info_map_base || [];
-            croak 'Usage: sub path_info_map_base { [] }' if ! UNIVERSAL::isa($maps, 'ARRAY');
-            foreach my $map (@$maps) {
-                croak 'Usage: sub path_info_map_base { [[qr{/path_info/(\w+)}, "keyname"]] }' if ! UNIVERSAL::isa($map, 'ARRAY');
-                my @match = $info =~ $map->[0];
-                next if ! @match;
-                $self->form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $self->form->{$map->[$_]}} 1 .. $#$map;
-                last;
-            }
-        }
 
+        $self->parse_path_info('path_info_map_base', $self->path_info_map_base); # add initial items to the form hash from path_info
         my $step = $self->form->{$self->step_key}; # make sure the step is valid
         if (defined $step) {
+            $step =~ s|^/+||; $step =~ s|/|__|g;
             if ($step =~ /^_/) {         # can't begin with _
                 $self->stash->{'forbidden_step'} = $step;
                 push @$path, $self->forbidden_step;
@@ -146,11 +133,34 @@ sub path {
     };
 }
 
+sub parse_path_info {
+    my ($self, $type, $maps, $info, $form) = @_;
+    $info ||= $self->path_info || return;
+    $form ||= $self->form;
+    return if ! $maps;
+    croak "Usage: sub $type { [] }" if ! UNIVERSAL::isa($maps, 'ARRAY');
+    foreach my $map (@$maps) {
+        croak "Usage: sub $type { [[qr{/path_info/(\\w+)}, 'keyname']] }" if ! UNIVERSAL::isa($map, 'ARRAY');
+        my @match = $info =~ $map->[0];
+        next if ! @match;
+        if (UNIVERSAL::isa($map->[1], 'CODE')) {
+            $map->[1]->($form, @match);
+        } else {
+            $form->{$map->[$_]} = $match[$_ - 1] foreach grep {! defined $form->{$map->[$_]}} 1 .. $#$map;
+        }
+        last;
+    }
+}
+
 sub run_hook {
-    my $self = shift;
-    my $hook = shift;
-    my $step = shift;
-    my ($code, $found) = @{ $self->find_hook($hook, $step) };
+    my ($self, $hook, $step, @args) = @_;
+    my ($code, $found);
+    if (ref $hook eq 'CODE') {
+        $code = $hook;
+        $hook = $found = 'coderef';
+    } else {
+        ($code, $found) = @{ $self->find_hook($hook, $step) };
+    }
     croak "Could not find a method named ${step}_${hook} or ${hook}" if ! $code;
     croak "Value for $hook ($found) is not a code ref ($code)" if ! UNIVERSAL::isa($code, 'CODE');
 
@@ -161,13 +171,24 @@ sub run_hook {
     }
     local $self->{'_level'} = 1 + ($self->{'_level'} || 0);
 
-    my $resp = $self->$code($step, @_);
+    my $resp = $self->$code($step, @args);
 
     if (! $self->{'no_history'}) {
         $hist->{'elapsed'}  = time - $hist->{'time'};
         $hist->{'response'} = $resp;
     }
 
+    return $resp;
+}
+
+sub run_hook_as {
+    my ($self, $hook, $step, $pkg, @args) = @_;
+    croak "Missing hook"    if ! $hook;
+    croak "Missing step"    if ! $step;
+    croak "Missing package" if ! $pkg;
+    $self->morph($step, 2, $pkg);
+    my $resp = $self->run_hook($hook, $step, @args);
+    $self->unmorph;
     return $resp;
 }
 
@@ -224,41 +245,43 @@ sub handle_error {
     local @{ $self }{'_handling_error', '_recurse' } = (1, 0); # allow for this next step - even if we hit a recurse error
     $self->stash->{'error_step'} = $self->current_step;
     $self->stash->{'error'}      = $err;
-    $self->replace_path($self->error_step);
-    eval { $self->jump };
+    eval {
+        my $step = $self->error_step;
+        $self->morph($step); # let steps be in external modules
+        $self->run_hook('run_step', $step) && $self->unmorph($step);
+    };
     die $@ if $@ && $@ ne "Long Jump\n";
 }
 
 ###---------------------###
 # read only accessors
 
-sub allow_morph          { $_[0]->{'allow_morph'} }
-sub allow_nested_morph   { $_[0]->{'allow_nested_morph'} }
-sub auth_args            { $_[0]->{'auth_args'} }
-sub charset              { $_[0]->{'charset'}        ||  '' }
-sub conf_args            { $_[0]->{'conf_args'} }
-sub conf_die_on_fail     { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
-sub conf_path            { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
-sub conf_validation      { $_[0]->{'conf_validation'} }
-sub default_step         { $_[0]->{'default_step'}   || 'main'        }
-sub error_step           { $_[0]->{'error_step'}     || '__error'     }
-sub fill_args            { $_[0]->{'fill_args'} }
-sub forbidden_step       { $_[0]->{'forbidden_step'} || '__forbidden' }
-sub form_name            { $_[0]->{'form_name'}      || 'theform'     }
-sub history              { $_[0]->{'history'}        ||= []           }
-sub js_step              { $_[0]->{'js_step'}        || 'js'          }
-sub login_step           { $_[0]->{'login_step'}     || '__login'     }
-sub mimetype             { $_[0]->{'mimetype'}       ||  'text/html'  }
-sub path_info            { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
-sub path_info_map_base   { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
-sub recurse_limit        { $_[0]->{'recurse_limit'}  ||  15                   }
-sub script_name          { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
-sub stash                { $_[0]->{'stash'}          ||= {}    }
-sub step_key             { $_[0]->{'step_key'}       || 'step' }
-sub template_args        { $_[0]->{'template_args'} }
-sub template_path        { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
-sub val_args             { $_[0]->{'val_args'} }
-sub val_path             { $_[0]->{'val_path'}       ||  $_[0]->template_path }
+sub allow_morph        { $_[0]->{'allow_morph'} }
+sub auth_args          { $_[0]->{'auth_args'} }
+sub charset            { $_[0]->{'charset'}        ||  '' }
+sub conf_args          { $_[0]->{'conf_args'} }
+sub conf_die_on_fail   { $_[0]->{'conf_die_on_fail'} || ! defined $_[0]->{'conf_die_on_fail'} }
+sub conf_path          { $_[0]->{'conf_path'}      ||  $_[0]->base_dir_abs }
+sub conf_validation    { $_[0]->{'conf_validation'} }
+sub default_step       { $_[0]->{'default_step'}   || 'main'        }
+sub error_step         { $_[0]->{'error_step'}     || '__error'     }
+sub fill_args          { $_[0]->{'fill_args'} }
+sub forbidden_step     { $_[0]->{'forbidden_step'} || '__forbidden' }
+sub form_name          { $_[0]->{'form_name'}      || 'theform'     }
+sub history            { $_[0]->{'history'}        ||= []           }
+sub js_step            { $_[0]->{'js_step'}        || 'js'          }
+sub login_step         { $_[0]->{'login_step'}     || '__login'     }
+sub mimetype           { $_[0]->{'mimetype'}       ||  'text/html'  }
+sub path_info          { $_[0]->{'path_info'}      ||  $ENV{'PATH_INFO'}   || '' }
+sub path_info_map_base { $_[0]->{'path_info_map_base'} ||[[qr{/(\w+)}, $_[0]->step_key]] }
+sub recurse_limit      { $_[0]->{'recurse_limit'}  ||  15                   }
+sub script_name        { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0 }
+sub stash              { $_[0]->{'stash'}          ||= {}    }
+sub step_key           { $_[0]->{'step_key'}       || 'step' }
+sub template_args      { $_[0]->{'template_args'} }
+sub template_path      { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
+sub val_args           { $_[0]->{'val_args'} }
+sub val_path           { $_[0]->{'val_path'}       ||  $_[0]->template_path }
 
 sub conf_obj {
     my $self = shift;
@@ -422,6 +445,7 @@ sub dump_history {
                       $resp = $1 if $resp =~ /^(.+)\n/;
                       length($resp) > 30 ? substr($resp, 0, 30)." ..." : $resp;
                   });
+            $note .= ' - '.$row->{'info'} if defined $row->{'info'};
         }
         push @$dump, $note;
     }
@@ -458,23 +482,31 @@ sub insert_path {
     else                 { splice(@$ref, $i + 1, 0, @_) } # insert a path at the current location
 }
 
-sub jump {
+sub jump { shift->goto_step(@_) }
+
+sub goto_step {
     my $self   = shift;
     my $i      = @_ == 1 ? shift : 1;
     my $path   = $self->path;
-    my $path_i = $self->{'path_i'}; croak "Can't jump if nav_loop not started" if ! defined $path_i;
+    my $path_i = $self->{'path_i'} || 0;
 
     if (   $i eq 'FIRST'   ) { $i = - $path_i - 1 }
     elsif ($i eq 'LAST'    ) { $i = $#$path - $path_i }
     elsif ($i eq 'NEXT'    ) { $i = 1  }
     elsif ($i eq 'CURRENT' ) { $i = 0  }
     elsif ($i eq 'PREVIOUS') { $i = -1 }
-    else { # look for a step by that name
-        for (my $j = $#$path; $j >= 0; $j --) {
+    elsif ($i !~ /^-?\d+/) { # look for a step by that name in the current remaining path
+        my $found;
+        for (my $j = $path_i; $j < @$path; $j++) {
             if ($path->[$j] eq $i) {
                 $i = $j - $path_i;
+                $found = 1;
                 last;
             }
+        }
+        if (! $found) {
+            $self->replace_path($i);
+            $i = $#$path;
         }
     }
     croak "Invalid jump index ($i)" if $i !~ /^-?\d+$/;
@@ -487,7 +519,10 @@ sub jump {
 
     $self->{'jumps'} = ($self->{'jumps'} || 0) + 1;
     $self->{'path_i'}++; # move along now that the path is updated
-    $self->nav_loop;     # recurse on the path
+
+    my $lin  = $self->{'_morph_lineage'} || [];
+    $self->unmorph if @$lin;
+    $self->nav_loop;  # recurse on the path
     $self->exit_nav_loop;
 }
 
@@ -495,70 +530,71 @@ sub js_uri_path {
     my $self   = shift;
     my $script = $self->script_name;
     my $js_step = $self->js_step;
-    return ($self->can('path') == \&CGI::Ex::App::path)
+    return ($self->can('path') == \&CGI::Ex::App::path
+            && $self->can('path_info_map_base') == \&CGI::Ex::App::path_info_map_base)
         ? $script .'/'. $js_step # try to use a cache friendly URI (if path is our own)
-        : $script . '?'.$self->step_key.'='.$js_step.'&js='; # use one that works with more paths
+        : $script .'?'. $self->step_key .'='. $js_step .'&js='; # use one that works with more paths
 }
 
 
 sub morph {
     my $self  = shift;
+    my $ref   = $self->history->[-1];
+    if (! $ref || ! $ref->{'meth'} || $ref->{'meth'} ne 'morph') {
+        push @{ $self->history }, ($ref = {meth => 'morph', found => 'morph', elapsed => 0, step => 'unknown', level => $self->{'_level'}});
+    }
     my $step  = shift || return;
-    my $allow = $self->run_hook('allow_morph', $step) || return;
+    my $allow = shift || $self->run_hook('allow_morph', $step) || return;
+    my $new   = shift; # optionally allow passing in the package to morph to
     my $lin   = $self->{'_morph_lineage'} ||= [];
-    my $cur   = ref $self; # what are we currently
-    push @$lin, $cur;     # store so subsequent unmorph calls can do the right thing
+    my $ok    = 0;
+    my $cur   = ref $self;
 
-    my $hist = {step => $step, meth => 'morph', found => 'morph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist if ! $self->{'no_history'};
+    push @$lin, $cur; # store so subsequent unmorph calls can do the right thing
 
-    if (ref($allow) && ! $allow->{$step}) { # hash - but no step - record for unbless
-        $hist->{'found'} .= " (not allowed to morph to that step)";
-        return 0;
-    }
+    # hash - but no step - record for unbless
+    if (ref($allow) && ! ($allow = $allow->{$step})) {
+        $ref->{'info'} = "not allowed to morph to that step";
 
-    ### make sure we haven't already been reblessed
-    if ($#$lin != 0                                       # is this the second morph call
-        && (! ($allow = $self->allow_nested_morph($step)) # not true
-            || (ref($allow) && ! $allow->{$step})         # hash - but no step
-            )) {
-        $hist->{'found'} .= $allow ? " (not allowed to nested_morph to that step)" : " (nested_morph disabled)";
-        return 0; # just return - don't die so that we can morph early
-    }
+    } elsif (! ($new ||= $self->run_hook('morph_package', $step))) {
+        $ref->{'info'} = "Missing morph_package for step $step";
+
+    } elsif ($cur eq $new) {
+        $ref->{'info'} = "already isa $new";
+        $ok = 1;
 
     ### if we are not already that package - bless us there
-    my $new = $self->run_hook('morph_package', $step);
-    if ($cur ne $new) {
+    } else {
         (my $file = "$new.pm") =~ s|::|/|g;
-        if (UNIVERSAL::can($new, 'can')  # check if the package space exists
-            || eval { require $file }) { # check for a file that holds this package
-            bless $self, $new;           # become that package
-            $hist->{'found'} .= " (changed $cur to $new)";
+        if (UNIVERSAL::can($new, 'fixup_after_morph')  # check if the package space exists
+            || (eval { require $file }                 # check for a file that holds this package
+                && UNIVERSAL::can($new, 'fixup_after_morph'))) {
+            bless $self, $new;                         # become that package
             $self->fixup_after_morph($step);
+            $ref->{'info'} = "changed $cur to $new";
         } elsif ($@) {
-            if ($@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
-                $hist->{'found'} .= " (failed from $cur to $new: $1)";
+            if ($allow eq '1' && $@ =~ /^\s*(Can\'t locate \S+ in \@INC)/) { # let us know what happened
+                $ref->{'info'} = "failed from $cur to $new: $1";
             } else {
-                $hist->{'found'} .= " (failed from $cur to $new: $@)";
-                my $err = "Trouble while morphing to $file: $@";
-                warn $err;
+                $ref->{'info'} = "failed from $cur to $new: $@";
+                die "Trouble while morphing from $cur to $new: $@";
             }
+        } elsif ($allow ne '1') {
+            $ref->{'info'} = "package $new doesn't support CGI::Ex::App API";
+            die "Found package $new, but $new doesn't support CGI::Ex::App API";
         }
+        $ok = 1;
     }
 
-    $hist->{'response'} = 1;
-    return 1;
+    return $ok;
 }
 
 sub replace_path {
     my $self = shift;
     my $ref  = $self->path;
     my $i    = $self->{'path_i'} || 0;
-    if ($i + 1 > $#$ref) {
-        push @$ref, @_;
-    } else {
-        splice(@$ref, $i + 1, $#$ref - $i, @_); # replace remaining entries
-    }
+    if ($i + 1 > $#$ref) { push @$ref, @_; }
+    else { splice(@$ref, $i + 1, $#$ref - $i, @_); } # replace remaining entries
 }
 
 sub set_path {
@@ -579,25 +615,24 @@ sub step_by_path_index {
 sub unmorph {
     my $self = shift;
     my $step = shift || '_no_step';
+    my $ref  = $self->history->[-1] || {};
+    if (! $ref || ! $ref->{'meth'} || $ref->{'meth'} ne 'unmorph') {
+        push @{ $self->history }, ($ref = {meth => 'unmorph', found => 'unmorph', elapsed => 0, step => $step, level => $self->{'_level'}});
+    }
     my $lin  = $self->{'_morph_lineage'} || return;
     my $cur  = ref $self;
-
-    my $prev = pop(@$lin) || croak "unmorph called more times than morph - current ($cur)";
+    my $prev = pop(@$lin) || croak "unmorph called more times than morph (current: $cur)";
     delete $self->{'_morph_lineage'} if ! @$lin;
-
-    my $hist = {step => $step, meth => 'unmorph', found => 'unmorph', time => time, elapsed => 0, response => 0};
-    push @{ $self->history }, $hist if ! $self->{'no_history'};
 
     if ($cur ne $prev) {
         $self->fixup_before_unmorph($step);
         bless $self, $prev;
-        $hist->{'found'} .= " (changed from $cur to $prev)";
+        $ref->{'info'} = "changed from $cur to $prev";
     } else {
-        $hist->{'found'} .= " (already isa $cur)";
+        $ref->{'info'} = "already isa $cur";
     }
 
-    $hist->{'response'} = 1;
-    return $self;
+    return 1;
 }
 
 ###---------------------###
@@ -608,6 +643,7 @@ sub file_print {
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
+    $_step =~ s|\B__+|/|g;
     $_step .= '.'. $self->ext_print if $_step !~ /\.\w+$/;
     foreach ($base_dir, $module) { $_ .= '/' if length($_) && ! m|/$| }
 
@@ -625,6 +661,7 @@ sub file_val {
     my $base_dir = $self->base_dir_rel;
     my $module   = $self->run_hook('name_module', $step);
     my $_step    = $self->run_hook('name_step', $step) || croak "Missing name_step";
+    $_step =~ s|\B__+|/|g;
     $_step =~ s/\.\w+$//;
     $_step .= '.'. $self->ext_val;
 
@@ -660,6 +697,7 @@ sub hash_base {
             script_name     => $self->script_name,
             path_info       => $self->path_info,
             js_validation   => sub { $copy->run_hook('js_validation', $step, shift) },
+            generate_form   => sub { $copy->run_hook('generate_form', $step, (ref($_[0]) ? (undef, shift) : shift)) },
             form_name       => $self->run_hook('form_name', $step),
             $self->step_key => $step,
         };
@@ -689,7 +727,6 @@ sub info_complete {
 
 sub js_validation {
     my ($self, $step) = @_;
-    return '' if $self->ext_val =~ /^html?$/; # let htm validation do it itself
     my $form_name = $_[2] || $self->run_hook('form_name', $step);
     my $hash_val  = $_[3] || $self->run_hook('hash_validation', $step);
     my $js_uri    = $self->js_uri_path;
@@ -697,12 +734,23 @@ sub js_validation {
     return $self->val_obj->generate_js($hash_val, $form_name, $js_uri);
 }
 
+sub generate_form {
+    my ($self, $step) = @_;
+    my $form_name = $_[2] || $self->run_hook('form_name', $step);
+    my $args      = ref($_[3]) eq 'HASH' ? $_[3] : {};
+    my $hash_val  = $self->run_hook('hash_validation', $step);
+    return '' if ! $form_name || ! ref($hash_val) || ! scalar keys %$hash_val;
+    local $args->{'js_uri_path'} = $self->js_uri_path;
+    return $self->val_obj->generate_form($hash_val, $form_name, $args);
+}
+
 sub morph_base { my $self = shift; ref($self) }
 sub morph_package {
     my ($self, $step) = @_;
     my $cur = $self->morph_base; # default to using self as the base for morphed modules
     my $new = ($cur ? $cur .'::' : '') . ($step || croak "Missing step");
-    $new =~ s/(\b|_+)(\w)/\u$2/g; # turn Foo::my_step_name into Foo::MyStepName
+    $new =~ s/\B__+/::/g; # turn Foo::my_nested__step info Foo::my_nested::step
+    $new =~ s/(?:_+|\b)(\w)/\u$1/g; # turn Foo::my_step_name into Foo::MyStepName
     return $new;
 }
 
@@ -829,21 +877,16 @@ sub check_valid_auth {
 
 sub get_valid_auth {
     my $self = shift;
-
     return $self->_do_auth({
         login_print => sub { # use CGI::Ex::Auth - but use our formatting and printing
             my ($auth, $template, $hash) = @_;
-            my $step = $self->login_step;
-            my $hash_base = $self->run_hook('hash_base',   $step) || {};
-            my $hash_comm = $self->run_hook('hash_common', $step) || {};
-            my $hash_swap = $self->run_hook('hash_swap',   $step) || {};
-            my $swap = {%$hash_base, %$hash_comm, %$hash_swap, %$hash};
-            my $out  = $self->run_hook('swap_template', $step, $template, $swap);
-            $self->run_hook('fill_template', $step, \$out, $hash);
-            $self->run_hook('print_out', $step, \$out);
+            local $self->{'__login_file_print'}  = $template;
+            local $self->{'__login_hash_common'} = $hash;
+            return $self->goto_step($self->login_step);
         }
     });
 }
+
 
 sub _do_auth {
     my ($self, $extra) = @_;
@@ -862,7 +905,6 @@ sub _do_auth {
 
     my $obj  = $self->auth_obj($args);
     my $resp = $obj->get_valid_auth;
-
     my $data = $obj->last_auth_data;
     delete $data->{'real_pass'} if defined $data; # data may be defined but false
     $self->auth_data($data); # failed authentication may still have auth_data
@@ -883,13 +925,21 @@ sub js_run_step { # step that allows for printing javascript libraries that are 
     return 1;
 }
 
+sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
-sub __forbidden_hash_swap  { shift->stash }
+sub __forbidden_hash_common  { shift->stash }
 sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
 
+sub __error_allow_morph { shift->allow_morph(@_) && 1 }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
-sub __error_hash_swap  { shift->stash }
+sub __error_hash_common  { shift->stash }
 sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+
+sub __login_require_auth { 0 }
+sub __login_allow_morph { shift->allow_morph(@_) && 1 }
+sub __login_info_complete { 0 } # step used by default authentication
+sub __login_hash_common { shift->{'__login_hash_common'} || {error => "hash_common not set during default __login"} }
+sub __login_file_print { shift->{'__login_file_print'} || \ "file_print not set during default __login<br>[% login_error %]" }
 
 1;
 

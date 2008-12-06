@@ -29,7 +29,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.24';
+$VERSION = '2.27';
 
 $DEFAULT_EXT = 'conf';
 
@@ -263,7 +263,8 @@ sub read_handler_json {
   CORE::read(IN, my $text, -s $file);
   close IN;
   require JSON;
-  return scalar JSON::jsonToObj($text);
+  my $decode = JSON->VERSION > 1.98 ? 'decode' : 'jsonToObj';
+  return scalar JSON->new->$decode($text);
 }
 
 sub read_handler_storable {
@@ -545,7 +546,15 @@ sub write_handler_json {
   my $file = shift;
   my $ref  = shift;
   require JSON;
-  my $str = JSON::objToJson($ref, {pretty => 1, indent => 2});
+  my $str;
+  if (JSON->VERSION > 1.98) {
+      my $j = JSON->new;
+      $j->canonical(1);
+      $j->pretty;
+      $str = $j->encode($ref);
+  } else {
+      $str = JSON->new->objToJSon($ref, {pretty => 1, indent => 2});
+  }
   local *OUT;
   open (OUT, ">$file") || die $!;
   print OUT $str;
