@@ -7,7 +7,7 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2007 - Paul Seamons                                     #
+#  Copyright 2003-2012 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.32';
+    $VERSION               = '2.37';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -195,7 +195,7 @@ sub get_cookies {
     my %hash = ();
     foreach my $key ($obj->cookie) {
         my @val = $obj->cookie($key);
-        $hash{$key} = ($#val == -1) ? next : ($#val == 0) ? $val[0] : \@val;
+        $hash{$key} = ($#val == -1) ? "" : ($#val == 0) ? $val[0] : \@val;
     }
     return $self->{'cookies'} = \%hash;
 }

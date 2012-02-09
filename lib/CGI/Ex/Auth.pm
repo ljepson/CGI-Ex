@@ -7,7 +7,7 @@ CGI::Ex::Auth - Handle logins nicely.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2007 - Paul Seamons                                     #
+#  Copyright 2004-2012 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.32';
+$VERSION = '2.37';
 
 ###----------------------------------------------------------------###
 
@@ -98,7 +98,7 @@ sub get_valid_auth {
             $data = $self->verify_token({token => $cookie, from => 'cookie'});
             if (defined $form_user) { # they had form data
                 my $user = $self->cleanup_user($form_user);
-                if (! $data || $user ne $data->{'user'}) { # but the cookie didn't match
+                if (! $data || !$self->check_form_user_against_cookie($user, $data->{'user'}, $data)) { # but the cookie didn't match
                     $data = $self->{'_last_auth_data'} = $form_data; # restore old form data failure
                     $data->{'user'} = $user if ! defined $data->{'user'};
                 }
@@ -183,7 +183,7 @@ sub handle_failure {
 
     # make sure the cookie is gone
     my $key_c = $self->key_cookie;
-    $self->delete_cookie({name => $key_c}) if $self->cookies->{$key_c};
+    $self->delete_cookie({name => $key_c}) if exists $self->cookies->{$key_c};
 
     # no valid login and we are checking for cookies - see if they have cookies
     if (my $value = delete $form->{$self->key_verify}) {
@@ -257,7 +257,17 @@ sub delete_cookie {
     my $args = shift;
     return $self->{'delete_cookie'}->($self, $args) if $self->{'delete_cookie'};
     local $args->{'value'}   = '';
-    local $args->{'expires'} = '-10y' if ! $self->use_session_cookie($args->{'name'}, '');
+    local $args->{'expires'} = '-10y';
+    if (my $dom = $ENV{HTTP_HOST}) {
+        $dom =~ s/:\d+$//;
+        do {
+            local $args->{'domain'} = $dom;
+            $self->set_cookie($args);
+            local $args->{'domain'} = ".$dom";
+            $self->set_cookie($args);
+        }
+        while ($dom =~ s/^[\w\-]*\.// and $dom =~ /\./);
+    }
     $self->set_cookie($args);
     delete $self->cookies->{$args->{'name'}};
 }
@@ -333,9 +343,9 @@ sub js_uri_path {
 
 sub no_cookies_print {
     my $self = shift;
+    return $self->{'no_cookies_print'}->($self) if $self->{'no_cookies_print'};
     $self->cgix->print_content_type;
     print qq{<div style="border: 2px solid black;background:red;color:white">You do not appear to have cookies enabled.</div>};
-    return 1;
 }
 
 sub login_print {
@@ -510,7 +520,7 @@ sub parse_token {
     my $bkey;
     for my $armor ('none', 'base64', 'blowfish') {
         my $copy = ($armor eq 'none')       ? $token
-            : ($armor eq 'base64')          ? eval { local $^W; decode_base64($token) }
+            : ($armor eq 'base64')          ? $self->use_base64 ? eval { local $^W; decode_base64($token) } : next
             : ($bkey = $self->use_blowfish) ? decrypt_blowfish($token, $bkey)
             : next;
         if ($self->complex_plaintext && $copy =~ m|^ ([^/]+) / (\d+) / (-?\d+) / ([^/]*) / (.*) $|x) {
@@ -700,6 +710,12 @@ sub cleanup_user {
         return $meth->($self, $user);
     }
     return $user;
+}
+
+sub check_form_user_against_cookie {
+    my ($self, $form_user, $cookie_user, $data) = @_;
+    return if ! defined($form_user) || ! defined($cookie_user);
+    return $form_user eq $cookie_user;
 }
 
 sub get_pass_by_user {

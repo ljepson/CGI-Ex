@@ -1,3 +1,33 @@
+2.37
+    2012-02-09
+        * (Validate) Make match_2 work in the javascript layer (as shown in perldoc)
+        * (Validate) Add int, uint, and num types with range checking on int and uint
+        * (Validate) Allow for custom => sub { my ($k, $v) = @_; die "Always fail\n" } to pass the result of the failure via the value of die.
+        * (Validate) Allow for custom_js:function (args) { throw "Always fail ("+args.value+")" } which passes the error message of the test as the fail message
+        * (Validate) Allow for type, enum, and equals to short circuit (don't run match, compare, length, or custom checks if type fails)
+        * (App) Fix the test suite to not require installation of CGI
+        * (App) Add CGI::Ex::App::Constants module supporting constants as a source of documentation
+        * (App) Allow for access to constants via use CGI::Ex::App qw(:App); or use MyApp qw(:App);
+
+2.36
+    2010-06-10
+        * (Auth) Make delete_cookie always delete, even for session Apps.
+
+2.35
+    2010-05-24
+        * (Auth) More robust cookie reading and writing and deleting.
+        * Workaround CGI::Cookie->parse weird empty cookie implementation.
+        * (Auth) Allow cookie_domain to be modified more gracefully.
+        * (Auth) Consider case with multiple cookies for the same name.
+
+2.34
+    2010-04-23
+        * (Auth) Don't attempted to decode base64 armor unless use_base64
+
+2.33
+    2010-04-01
+        * (Auth) Allow for custom form user vs valid cookie check
+
 2.32
     2010-02-25
         * (Validate) Allow for default to be an arrayref

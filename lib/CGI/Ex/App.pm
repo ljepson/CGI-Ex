@@ -2,7 +2,7 @@ package CGI::Ex::App;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/App.pod
-#  Copyright 2008 - Paul Seamons
+#  Copyright 2004-2012 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
@@ -11,7 +11,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.32';
+our $VERSION = '2.37';
 
 sub new {
     my $class = shift || croak "Usage: ".__PACKAGE__."->new";
@@ -31,6 +31,15 @@ sub init_from_conf {
     my $conf = $self->conf;
     @{ $self }{ keys %$conf } = values %$conf;
     return;
+}
+
+sub import { # only ever called with explicit use CGI::Ex::App qw() - not with use base
+    my $class = shift;
+    if (@_ = grep { /^:?App($|__)/ } @_) {
+        require CGI::Ex::App::Constants;
+        unshift @_, 'CGI::Ex::App::Constants';
+        goto &CGI::Ex::App::Constants::import;
+    }
 }
 
 ###---------------------###
@@ -926,15 +935,16 @@ sub js_run_step { # step that allows for printing javascript libraries that are 
     return 1;
 }
 
+sub __forbidden_require_auth { 0 }
 sub __forbidden_allow_morph { shift->allow_morph(@_) && 1 }
 sub __forbidden_info_complete { 0 } # step that will be used the path method determines it is forbidden
 sub __forbidden_hash_common  { shift->stash }
-sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step %]\"</b>" }
+sub __forbidden_file_print { \ "<h1>Denied</h1>You do not have access to the step <b>\"[% forbidden_step.html %]\"</b>" }
 
 sub __error_allow_morph { shift->allow_morph(@_) && 1 }
 sub __error_info_complete { 0 } # step that is used by the default handle_error
 sub __error_hash_common  { shift->stash }
-sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
+sub __error_file_print { \ "<h1>A fatal error occurred</h1>Step: <b>\"[% error_step.html %]\"</b><br>[% TRY; CONFIG DUMP => {header => 0}; DUMP error; END %]" }
 
 sub __login_require_auth { 0 }
 sub __login_allow_morph { shift->allow_morph(@_) && 1 }

@@ -2,13 +2,13 @@ package CGI::Ex::Validate;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/Validate.pod
-#  Copyright 2008 - Paul Seamons
+#  Copyright 2003-2012 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
 use Carp qw(croak);
 
-our $VERSION  = '2.32';
+our $VERSION  = '2.37';
 our $QR_EXTRA = qr/^(\w+_error|as_(array|string|hash)_\w+|no_\w+)/;
 our @UNSUPPORTED_BROWSERS = (qr/MSIE\s+5.0\d/i);
 our $JS_URI_PATH;
@@ -372,7 +372,7 @@ sub validate_buddy {
     # at this point @errors should still be empty
     my $content_checked; # allow later for possible untainting (only happens if content was checked)
 
-    foreach my $value (@$values) {
+    OUTER: foreach my $value (@$values) {
 
         if (exists $field_val->{'enum'}) {
             my $ref = ref($field_val->{'enum'}) ? $field_val->{'enum'} : [split(/\s*\|\|\s*/,$field_val->{'enum'})];
@@ -383,6 +383,17 @@ sub validate_buddy {
             if (! $found) {
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, 'enum', $field_val, $ifs_match];
+                next OUTER;
+            }
+            $content_checked = 1;
+        }
+
+        # do specific type checks
+        if (exists $field_val->{'type'}) {
+            if (! $self->check_type($value, $field_val->{'type'}, $field, $form)){
+                return [] if $self->{'_check_conditional'};
+                push @errors, [$field, 'type', $field_val, $ifs_match];
+                next OUTER;
             }
             $content_checked = 1;
         }
@@ -403,6 +414,7 @@ sub validate_buddy {
             if ($not ? $success : ! $success) {
                 return [] if $self->{'_check_conditional'};
                 push @errors, [$field, $type, $field_val, $ifs_match];
+                next OUTER;
             }
             $content_checked = 1;
         } }
@@ -513,20 +525,20 @@ sub validate_buddy {
         # server side custom type
         if ($types{'custom'}) { foreach my $type (@{ $types{'custom'} }) {
             my $check = $field_val->{$type};
-            next if UNIVERSAL::isa($check, 'CODE') ? &$check($field, $value, $field_val, $type) : $check;
+            my $err;
+            if (UNIVERSAL::isa($check, 'CODE')) {
+                my $ok;
+                $err = "$@" if ! eval { $ok = $check->($field, $value, $field_val, $type, $form); 1 };
+                next if $ok;
+                chomp($err) if !ref($@) && defined($err);
+            } else {
+                next if $check;
+            }
             return [] if $self->{'_check_conditional'};
-            push @errors, [$field, $type, $field_val, $ifs_match];
+            push @errors, [$field, $type, $field_val, $ifs_match, (defined($err) ? $err : ())];
             $content_checked = 1;
         } }
 
-        # do specific type checks
-        if ($types{'type'}) { foreach my $type (@{ $types{'type'} }) {
-            if (! $self->check_type($value,$field_val->{'type'},$field,$form)){
-                return [] if $self->{'_check_conditional'};
-                push @errors, [$field, $type, $field_val, $ifs_match];
-            }
-            $content_checked = 1;
-        } }
     }
 
     # allow for the data to be "untainted"
@@ -552,7 +564,7 @@ sub validate_buddy {
 ### used to validate specific types
 sub check_type {
     my ($self, $value, $type) = @_;
-
+    $type = lc $type;
     if ($type eq 'email') {
         return 0 if ! $value;
         my ($local_p,$dom) = ($value =~ /^(.+)\@(.+?)$/) ? ($1,$2) : return 0;
@@ -587,11 +599,20 @@ sub check_type {
         return 0 if $value && ! $self->check_type($value,'uri');
 
     # validate a uri - the path portion of a request
-    } elsif ($type eq 'URI') {
+    } elsif ($type eq 'uri') {
         return 0 if ! $value;
         return 0 if $value =~ m/\s+/;
 
-    } elsif ($type eq 'CC') {
+    } elsif ($type eq 'int') {
+        return 0 if $value !~ /^-? (?: 0 | [1-9]\d*) $/x;
+        return 0 if ($value < 0) ? $value < -2**31 : $value > 2**31-1;
+    } elsif ($type eq 'uint') {
+        return 0 if $value !~ /^   (?: 0 | [1-9]\d*) $/x;
+        return 0 if $value > 2**32-1;
+    } elsif ($type eq 'num') {
+        return 0 if $value !~ /^-? (?: 0 | [1-9]\d* (?:\.\d+)? | 0?\.\d+) $/x;
+
+    } elsif ($type eq 'cc') {
         return 0 if ! $value;
         return 0 if $value =~ /[^\d\-\ ]/;
         $value =~ s/\D//g;
@@ -899,7 +920,8 @@ sub get_error_text {
     my $self  = shift;
     my $err   = shift;
     my $extra = $self->{extra} || {};
-    my ($field, $type, $field_val, $ifs_match) = @$err;
+    my ($field, $type, $field_val, $ifs_match, $custom_err) = @$err;
+    return $custom_err if defined($custom_err) && length($custom_err);
     my $dig     = ($type =~ s/(_?\d+)$//) ? $1 : '';
     my $type_lc = lc($type);
 

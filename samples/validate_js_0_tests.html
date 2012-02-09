@@ -135,8 +135,15 @@ function run_tests () {
   ok(e.text1_error == "The field text1 is not in the given list.", "Got the right enum error");
   e = validate({text1:1}, v);
   ok(! e, "No enum error");
+
+  v = {text1:{'enum':[1, 2, 3],match:'m/3/'}};
+  e = validate({text1:1}, v);
+  ok(e, 'enum');
+  ok(e.text1_error == "The field text1 contains invalid characters.", 'enum shortcircuit');
+
   e = validate({text1:4}, v);
-  ok(e, "Got enum error");
+  ok(e, 'enum');
+  ok(e.text1_error == "The field text1 is not in the given list.", 'enum shortcircuit2');
 
   v = {text2:{'enum':"1 || 2||3"}};
   e = validate({text2:1}, v);
@@ -199,6 +206,13 @@ function run_tests () {
   e = validate({text1:"abc."}, v);
   ok(e, "Got a match error");
   ok(e.text1_error == "The field text1 contains invalid characters.", "Got the right match error");
+
+  v = {text1:{match_2:'m/^\\w+$/',match_2_error:'Bad'}};
+  e = validate({text1:"abc"}, v);
+  ok(! e, "No match error");
+  e = validate({text1:"abc."}, v);
+  ok(e, "Got a match error");
+  ok(e.text1_error == "Bad", "Got the right match error");
 
   v = {text1:{match:['m/^\\w+$/', 'm/^[a-z]+$/']}};
   e = validate({text1:"abc"}, v);
@@ -323,13 +337,26 @@ function run_tests () {
   e = validate({text1:"str"}, v);
   ok(! e, "No custom_js error for function type");
 
+  e = validate({text1: "str"}, {text1: {custom_js:"throw 'Always fail ('+value+')'"}});
+  ok(e, 'Got an error');
+  ok(e.text1_error == "Always fail (str)", "Passed along the message from throw");
+  e = validate({text1: "str2"}, {text1: {custom_js:function (args) { throw "Always fail2 ("+args.value+")" }}});
+  ok(e, 'Got an error');
+  ok(e.text1_error == "Always fail2 (str2)", "Passed along the message from throw");
+
+
+
   // type checks
-  v = {text1:{type:'ip'}};
-  e = validate({text1:'209.108.25'}, v);
-  ok(e, "Got type ip error");
-  ok(e.text1_error == "The field text1 did not match type ip.", "Got the right type ip error");
-  e = validate({text1:'209.108.25.111'}, v);
-  ok(! e, "No type ip error");
+  v = {text1: {type: 'ip', match: 'm/^203\./'}};
+  e = validate({text1: '209.108.25'}, v);
+  ok(e, 'type ip - with short circuit');
+  ok(e.text1_error == 'The field text1 did not match type ip.', 'type ip - was: '+e.text1_error); // make sure they short circuit
+  e = validate({text1: '209.108.25.111'}, v);
+  ok(e, 'type ip - but had match error');
+  ok(e.text1_error == 'The field text1 contains invalid characters.', 'type ip');
+  e = validate({text1: '203.108.25.111'}, v);
+  ok(! e, 'type ip');
+
   v = {text1:{type:'email'}};
   e = validate({text1:'foo.bar.com'}, v)
   ok(e, "Got an email error");
@@ -369,6 +396,18 @@ function run_tests () {
   ok(e, "Got cc error");
   e = validate({text1:'4241-4242-4242'}, {text1:{type:'cc'}});
   ok(e, "Got cc error");
+  for (var $_ in {"0":1, "2":1, "23":1, "-0":1, "-2":1, "-23":1, "0.0":1, ".1":1, "0.1":1, "0.10":1, "1.0":1, "1.01":1})
+    ok(!validate({text1: $_}, {text1: {type: 'num'}}),  "Type num "+$_)
+  for (var $_ in {"0":1, "2":1, "23":1, "-0":1, "-2":1, "-23":1, "2147483647":1, "-2147483648":1})
+    ok(!validate({text1: $_}, {text1: {type: 'int'}}),  "Type int "+$_);
+  for (var $_ in {"0":1, "2":1, "23":1, "4294967295":1})
+    ok(!validate({text1: $_}, {text1: {type: 'uint'}}), "Type uint "+$_);
+  for (var $_ in {"0a":1, "a2":1, "-0a":1, "0..0":1, "00":1, "001":1, "1.":1})
+    ok(validate({text1: $_},  {text1: {type: 'num'}}),  "Type num invalid "+$_);
+  for (var $_ in {"1.1":1, "0.1":1, "0.0":1, "-1.1":1, "0a":1, "a2":1, "a":1, "00":1, "001":1, "2147483648":1, "-2147483649":1})
+    ok(validate({text1: $_},  {text1: {type: 'int'}}),  "Type int invalid "+$_);
+  for (var $_ in {"-1":1, "-0":1, "1.1":1, "0.1":1, "0.0":1, "-1.1":1, "0a":1, "a2":1, "a":1, "00":1, "001":1, "4294967296":1})
+    ok(validate({text1: $_},  {text1: {type: 'uint'}}), "Type uint invalid "+$_);
 
   // min_in_set checks
   v = {text1:{min_in_set:'2 of text1 text2 password1', max_values:5}};

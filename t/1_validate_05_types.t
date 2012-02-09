@@ -7,14 +7,14 @@
 =cut
 
 use strict;
-use Test::More tests => 120;
+use Test::More tests => 181;
 
 use_ok('CGI::Ex::Validate');
 
 my $v;
 my $e;
 
-sub validate { scalar CGI::Ex::Validate::validate(@_) }
+sub validate { scalar CGI::Ex::Validate->new({as_array_title=>'',as_string_join=>"\n"})->validate(@_) }
 
 ### required
 $v = {foo => {required => 1}};
@@ -110,11 +110,14 @@ ok(! $e, 'enum');
 $e = validate({foo => 1, bar => 2}, $v);
 ok(! $e, 'enum');
 
-$e = validate({foo => 1, bar => 3}, $v);
-ok(! $e, 'enum');
-
-$e = validate({foo => 1, bar => 4}, $v);
+$v->{'foo'}->{'match'} = 'm/3/';
+$e = validate({foo => 1, bar => 2}, $v);
 ok($e, 'enum');
+is($e, "Foo contains invalid characters.", 'enum shortcircuit');
+
+$e = validate({foo => 4, bar => 1}, $v);
+ok($e, 'enum');
+is($e, "Foo is not in the given list.", 'enum shortcircuit');
 
 # equals
 $v = {foo => {equals => 'bar'}};
@@ -331,11 +334,19 @@ ok($e, 'custom');
 $e = validate({foo => "str"}, $v);
 ok(! $e, 'custom');
 
+$e = validate({foo => "str"}, {foo => {custom => sub { my ($k, $v) = @_; die "Always fail ($v)\n" }}});
+ok($e, 'Got an error');
+is($e->as_hash->{'foo_error'}, "Always fail (str)", "Passed along the message from die");
+
 ### type checks
-$v = {foo => {type => 'ip'}};
+$v = {foo => {type => 'ip', match => 'm/^203\./'}};
 $e = validate({foo => '209.108.25'}, $v);
 ok($e, 'type ip');
+is($e, 'Foo did not match type ip.', 'type ip'); # make sure they short circuit
 $e = validate({foo => '209.108.25.111'}, $v);
+ok($e, 'type ip - but had match error');
+is($e, 'Foo contains invalid characters.', 'type ip');
+$e = validate({foo => '203.108.25.111'}, $v);
 ok(! $e, 'type ip');
 
 $v = {foo => {type => 'domain'}};
@@ -356,6 +367,13 @@ $e = validate({foo => 'bi..com'}, $v);
 ok($e, 'type domain');
 $e = validate({foo => '1234567890123456789012345678901234567890123456789012345678901234.com'}, $v);
 ok($e, 'type domain');
+
+ok(!validate({n => $_}, {n => {type => 'num'}}),  "Type num $_")  for qw(0 2 23 -0 -2 -23 0.0 .1 0.1 0.10 1.0 1.01);
+ok(!validate({n => $_}, {n => {type => 'int'}}),  "Type int $_")  for qw(0 2 23 -0 -2 -23 2147483647 -2147483648);
+ok(!validate({n => $_}, {n => {type => 'uint'}}), "Type uint $_") for qw(0 2 23 4294967295);
+ok(validate({n => $_}, {n => {type  => 'num'}}),  "Type num invalid $_")  for qw(0a a2 -0a 0..0 00 001 1.);
+ok(validate({n => $_}, {n => {type  => 'int'}}),  "Type int invalid $_")  for qw(1.1 0.1 0.0 -1.1 0a a2 a 00 001 2147483648 -2147483649);
+ok(validate({n => $_}, {n => {type  => 'uint'}}), "Type uint invalid $_") for qw(-1 -0 1.1 0.1 0.0 -1.1 0a a2 a 00 001 4294967296);
 
 ### min_in_set checks
 $v = {foo => {min_in_set => '2 of foo bar baz', max_values => 5}};
