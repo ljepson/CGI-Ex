@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               CGI-Ex
-version:            2.37
+version:            2.38
 abstract:           CGI utility suite - makes powerful application writing fun and easy
 author:
     - Paul Seamons
