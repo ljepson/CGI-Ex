@@ -1,49 +1,47 @@
-NAME
-====
-CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
+CGI::Ex
+==============
+CGI Utility Suite - Makes powerful application writing fun and easy
 
-SYNOPSIS
---------------
-        ### You probably don't want to use CGI::Ex directly
-        ### You probably should use [CGI::Ex::App](lib/CGI/Ex/App.pm) instead.
+### SYNOPSIS
+    ### You probably don't want to use CGI::Ex directly
+    ### You probably should use [CGI::Ex::App](lib/CGI/Ex/App.pm) instead.
 
-        my $cgix = CGI::Ex->new;
+    my $cgix = CGI::Ex->new;
 
-        $cgix->print_content_type;
+    $cgix->print_content_type;
 
-        my $hash = $cgix->form;
+    my $hash = $cgix->form;
 
-        if ($hash->{'bounce'}) {
+    if ($hash->{'bounce'}) {
 
-            $cgix->set_cookie({
-                name  => ...,
-                value => ...,
-            });
+        $cgix->set_cookie({
+            name  => ...,
+            value => ...,
+        });
 
-            $cgix->location_bounce($new_url_location);
-            exit;
-        }
+        $cgix->location_bounce($new_url_location);
+        exit;
+    }
 
-        if (scalar keys %$form) {
-             my $val_hash = $cgix->conf_read($pathtovalidation);
-             my $err_obj = $cgix->validate($hash, $val_hash);
-             if ($err_obj) {
-                 my $errors  = $err_obj->as_hash;
-                 my $input   = "Some content";
-                 my $content = "";
-                 $cgix->swap_template(\$input, $errors, $content);
-                 $cgix->fill({text => \$content, form => $hashref});
-                 print $content;
-                 exit;
-             } else {
-                 print "Success";
-             }
-        } else {
-             print "Main page";
-        }
+    if (scalar keys %$form) {
+            my $val_hash = $cgix->conf_read($pathtovalidation);
+            my $err_obj = $cgix->validate($hash, $val_hash);
+            if ($err_obj) {
+                my $errors  = $err_obj->as_hash;
+                my $input   = "Some content";
+                my $content = "";
+                $cgix->swap_template(\$input, $errors, $content);
+                $cgix->fill({text => \$content, form => $hashref});
+                print $content;
+                exit;
+            } else {
+                print "Success";
+            }
+    } else {
+            print "Main page";
+    }
 
-DESCRIPTION
--------------------
+### DESCRIPTION
 CGI::Ex provides a suite of utilities to make writing CGI scripts more enjoyable.  
 
 Although they can all be used separately, the main functionality of each of the
@@ -76,26 +74,25 @@ JavaScript portion that allows for duplicate client side validation. See
 [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm) for more information.
 
 ##### [CGI::Ex::Conf](lib/CGI/Ex/Conf.pm)
-A general use configuration, or settings, or key / value file reader. Has
+A general-use configuration, or settings, or key / value file reader. Has
 ability for providing key fallback as well as immutable key definitions. Has
 default support for YAML, Storable, Perl, INI, and XML and open architecture
 for definition of others. See [CGI::Ex::Conf](lib/CGI/Ex/Conf.pm) for more
 information.
 
 ##### [CGI::Ex::Auth](lib/CGI/Ex/Auth.pm)
-A highly configurable web based authentication system. See
+A highly configurable, web-based authentication system. See
 [CGI::Ex::Auth](lib/CGI/Ex/Auth.pm) for more information.
 
-CGI::Ex METHODS
-------------------------
+### CGI::Ex METHODS
 ##### ->fill
 fill is used for filling hash or cgi object values into an existing HTML
 document (it doesn't deal at all with how you got the document). Arguments may
-be given as a hash, or a hashref or positional. Some of the following arguments
+be given as a hash, a hashref, or positional. Some of the following arguments
 will only work using [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm) - most will work with
 either [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm) or HTML::FillInForm (assume they are
-available unless specified otherwise) (See [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm)
-for a full explanation of functionality). The arguments to fill are as follows
+available unless specified otherwise). See [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm)
+for a full explanation of functionality. The arguments to fill are as follows
 (and in order of position):
 
 * **text**  
@@ -314,8 +311,7 @@ If at a later date, the developer upgrades to Template::Toolkit, the templates
 that were being swapped by CGI::Ex::swap_template should be compatible with
 Template::Toolkit.
 
-MODULES
--------
+### MODULES
 See also [CGI::Ex::App](lib/CGI/Ex/App.pm).
 
 See also [CGI::Ex::Auth](lib/CGI/Ex/Auth.pm).
@@ -332,10 +328,8 @@ See also [CGI::Ex::Template](lib/CGI/Ex/Template.pm).
 
 See also [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm).
 
-LICENSE
--------
+### LICENSE
 This module may be distributed under the same terms as Perl itself.
 
-AUTHOR
-------
+### AUTHOR
 Paul Seamons <perl at seamons dot com>
