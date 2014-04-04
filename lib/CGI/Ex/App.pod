@@ -1418,7 +1418,7 @@ should return an arrayref containing the code_ref to run, and the
 name of the method looked for.  It uses ->can to find the appropriate
 hook.
 
-    my $code = $self->hook('finalize', 'main');
+    my $code = $self->find_hook('finalize', 'main');
     ### will look first for $self->main_finalize;
     ### will then look  for $self->finalize;
 
@@ -2246,7 +2246,7 @@ hook in another package.
 
     # OR
 
-    my $hash = $self->run_hook_as('hash_swap', 'SomeOther::Module');
+    my $hash = $self->run_hook_as('hash_swap', 'step', 'SomeOther::Module');
 
 Note that the second form will use 'SomeOther::Module' as the step name
 which will be somewhat misleading in looking up names.
@@ -3205,6 +3205,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =cut

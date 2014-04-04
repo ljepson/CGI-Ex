@@ -8,10 +8,9 @@ CGI::Ex::Template - Template::Alloy based TT2/TT3/HT/HTE/Tmpl/Velocity engine.
 
 use strict;
 use warnings;
-use Template::Alloy 1.004;
+use Template::Alloy 1.016;
 use base qw(Template::Alloy);
-use vars qw($VERSION
-            $QR_PRIVATE
+use vars qw($QR_PRIVATE
             $WHILE_MAX
             $MAX_EVAL_RECURSE
             $MAX_MACRO_RECURSE
@@ -24,8 +23,6 @@ use vars qw($VERSION
             $HASH_OPS
             $VOBJS
             );
-
-$VERSION = '2.38';
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;
@@ -154,6 +151,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =cut

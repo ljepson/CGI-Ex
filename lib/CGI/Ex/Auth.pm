@@ -7,7 +7,7 @@ CGI::Ex::Auth - Handle logins nicely.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004-2012 - Paul Seamons                                #
+#  Copyright 2004-2014 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.38';
+$VERSION = '2.40';
 
 ###----------------------------------------------------------------###
 
@@ -1402,6 +1402,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHORS
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul@seamons.com>
 
 =cut
