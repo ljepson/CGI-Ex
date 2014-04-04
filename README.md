@@ -4,7 +4,7 @@ CGI Utility Suite - Makes powerful application writing fun and easy
 
 ### SYNOPSIS
     ### You probably don't want to use CGI::Ex directly
-    ### You probably should use [CGI::Ex::App](lib/CGI/Ex/App.pm) instead.
+    ### You probably should use CGI::Ex::App instead.
 
     my $cgix = CGI::Ex->new;
 
@@ -20,25 +20,32 @@ CGI Utility Suite - Makes powerful application writing fun and easy
         });
 
         $cgix->location_bounce($new_url_location);
+
         exit;
     }
 
     if (scalar keys %$form) {
-            my $val_hash = $cgix->conf_read($pathtovalidation);
-            my $err_obj = $cgix->validate($hash, $val_hash);
-            if ($err_obj) {
-                my $errors  = $err_obj->as_hash;
-                my $input   = "Some content";
-                my $content = "";
-                $cgix->swap_template(\$input, $errors, $content);
-                $cgix->fill({text => \$content, form => $hashref});
-                print $content;
-                exit;
-            } else {
-                print "Success";
-            }
+
+        my $val_hash = $cgix->conf_read($pathtovalidation);
+        my $err_obj  = $cgix->validate($hash, $val_hash);
+
+        if ($err_obj) {
+
+            my $errors  = $err_obj->as_hash;
+            my $input   = "Some content";
+            my $content = "";
+
+            $cgix->swap_template(\$input, $errors, $content);
+            $cgix->fill({text => \$content, form => $hashref});
+
+            print $content;
+
+            exit;
+        } else {
+            print "Success";
+        }
     } else {
-            print "Main page";
+        print "Main page";
     }
 
 ### DESCRIPTION
@@ -61,20 +68,20 @@ A Template::Toolkit compatible processing engine. With a few limitations,
 Template::Toolkit.
 
 ##### [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm)
-A regular expression based form filler inner (accessed through ->fill or
+A regular expression based form-filler (accessed through ->fill or
 directly via its own functions). Can be a drop-in replacement for
 HTML::FillInForm. See [CGI::Ex::Fill](lib/CGI/Ex/Fill.pm) for more information.
 
 ##### [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm)
 A form field / cgi parameter / any parameter validator (accessed through
 ->validate or directly via its own methods). Not quite a drop-in for most
-validators, although it has most of the functionality of most of the validators
-but with the key additions of conditional validation. Has a tightly integrated
-JavaScript portion that allows for duplicate client side validation. See
+validators, although it has most of the functionality of other validators,
+with the key addition of conditional validation. Has a tightly integrated
+JavaScript portion that allows for duplicate client-side validation. See
 [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm) for more information.
 
 ##### [CGI::Ex::Conf](lib/CGI/Ex/Conf.pm)
-A general-use configuration, or settings, or key / value file reader. Has
+A general-use configuration, settings, or key / value file reader. Has
 ability for providing key fallback as well as immutable key definitions. Has
 default support for YAML, Storable, Perl, INI, and XML and open architecture
 for definition of others. See [CGI::Ex::Conf](lib/CGI/Ex/Conf.pm) for more
@@ -332,4 +339,4 @@ See also [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm).
 This module may be distributed under the same terms as Perl itself.
 
 ### AUTHOR
-Paul Seamons <perl at seamons dot com>
+Paul Seamons \<perl at seamons dot com\>
