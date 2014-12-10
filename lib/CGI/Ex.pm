@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.41';
+    $VERSION               = '2.42';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -295,12 +295,19 @@ sub location_bounce {
     my ($self, $loc) = ($#_ == 1) ? (@_) : (undef, shift);
     $self = __PACKAGE__->new if ! $self;
     $loc =~ s{(\s)}{sprintf("%%%02X", ord $1)}xge if $loc;
+    my $html_loc = $loc;
+    if ($html_loc) {
+        $html_loc =~ s/&/&amp;/g;
+        $html_loc =~ s/</&lt;/g;
+        $html_loc =~ s/>/&gt;/g;
+        $html_loc =~ s/\"/&quot;/g;
+    }
 
     if ($self->content_typed) {
         if ($DEBUG_LOCATION_BOUNCE) {
-            print "<a class=debug href=\"$loc\">Location: $loc</a><br />\n";
+            print "<a class=debug href=\"$html_loc\">Location: $html_loc</a><br />\n";
         } else {
-            print "<meta http-equiv=\"refresh\" content=\"0;url=$loc\" />\n";
+            print "<meta http-equiv=\"refresh\" content=\"0;url=$html_loc\" />\n";
         }
 
     } elsif (my $r = $self->apache_request) {
@@ -309,7 +316,7 @@ sub location_bounce {
             $r->header_out("Location", $loc);
             $r->content_type('text/html');
             $r->send_http_header;
-            $r->print("Bounced to $loc\n");
+            $r->print("Bounced to $html_loc\n");
         } else {
             $r->headers_out->add("Location", $loc);
             $r->content_type('text/html');
@@ -320,7 +327,7 @@ sub location_bounce {
         print "Location: $loc\r\n",
         "Status: 302 Bounce\r\n",
         "Content-Type: text/html\r\n\r\n",
-        "Bounced to $loc\r\n";
+        "Bounced to $html_loc\r\n";
     }
 }
 
