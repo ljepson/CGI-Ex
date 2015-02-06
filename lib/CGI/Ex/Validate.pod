@@ -580,7 +580,7 @@ compare, custom, or length checks will not be ran.
 
 =over 4
 
-item C<CC>
+=item C<CC>
 
 Simple Luhn-10 check.  Note that spaces and dashes are left in place.
 
