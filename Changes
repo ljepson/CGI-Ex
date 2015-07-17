@@ -1,3 +1,9 @@
+2.43
+    2015-07-17
+        * Allow HTML5 input types to be filled
+        * Fix bug that prevents bounce_on_logout from deleting the auth cookie
+        * Silence warning about CGI::param in list context
+
 2.42
     2014-12-10
         * Adding protection to location bounces to stop potential XSS vulnerabilities
