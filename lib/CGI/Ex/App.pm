@@ -264,10 +264,18 @@ sub script_name        { $_[0]->{'script_name'}    ||  $ENV{'SCRIPT_NAME'} || $0
 sub stash              { $_[0]->{'stash'}          ||= {}    }
 sub step_key           { $_[0]->{'step_key'}       || 'step' }
 sub template_args      { $_[0]->{'template_args'} }
-sub template_obj       { shift->{'template_obj'}   || do { require Template::Alloy; Template::Alloy->new(@_) } }
-sub template_path      { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
 sub val_args           { $_[0]->{'val_args'} }
 sub val_path           { $_[0]->{'val_path'}       ||  $_[0]->template_path }
+sub template_path      { $_[0]->{'template_path'}  ||  $_[0]->base_dir_abs  }
+
+sub template_obj {
+    my $self = shift;
+    return $self->{'template_obj'} || do {
+        $self->{'allow_alloy_xs'} ||= !! eval { require Template::Alloy::XS };
+        $self->{'allow_alloy_xs'} ? ( require Template::Alloy::XS && Template::Alloy::XS->new(@_) )
+                                  : ( require Template::Alloy && Template::Alloy->new(@_) );
+    };
+}
 
 sub conf_obj {
     my $self = shift;
