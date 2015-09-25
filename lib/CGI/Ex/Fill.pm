@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '2.43';
+    $VERSION   = '2.42';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
@@ -194,7 +194,9 @@ sub fill {
 
             if ($name && ! $ignore->{$name}) {
                 if (! $type
-                    || ($type ne 'PASSWORD' && $type ne 'CHECKBOX' && $type ne 'RADIO')
+                    || $type eq 'HIDDEN'
+                    || $type eq 'TEXT'
+                    || $type eq 'FILE'
                     || ($type eq 'PASSWORD' && $fill_password)) {
 
                     my $value = $get_form_value->($name, 'next');

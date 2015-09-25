@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.43';
+    $VERSION               = '2.42';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
@@ -127,8 +127,6 @@ sub get_form {
     ### get the info out of the object
     my $obj  = shift || $self->object;
     my %hash = ();
-    ### this particular use of $cgi->param in list context is safe
-    local $CGI::LIST_CONTEXT_WARN = 0;
     foreach my $key ($obj->param) {
         my @val = $obj->param($key);
         $hash{$key} = ($#val <= 0) ? $val[0] : \@val;

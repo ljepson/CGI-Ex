@@ -19,7 +19,7 @@ use Digest::MD5 qw(md5_hex);
 use CGI::Ex;
 use Carp qw(croak);
 
-$VERSION = '2.43';
+$VERSION = '2.42';
 
 ###----------------------------------------------------------------###
 
@@ -54,7 +54,7 @@ sub get_valid_auth {
 
         if ($self->bounce_on_logout) {
             my $key_c = $self->key_cookie;
-            $self->delete_cookie({name => $key_c}) if $self->cookies->{$key_c};
+            $self->delete_cookie({key => $key_c}) if $self->cookies->{$key_c};
             my $user = $self->last_auth_data ? $self->last_auth_data->{'user'} : undef;
             $self->location_bounce($self->logout_redirect(defined($user) ? $user : ''));
             eval { die "Logging out" };

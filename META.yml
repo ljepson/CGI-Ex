@@ -19,4 +19,4 @@ no_index:
     - inc
 requires:
   Template::Alloy: 1.016
-version: 2.43
+version: 2.42
