@@ -616,7 +616,7 @@ Basic check that string matches something resembling an http or https url.
 
 =item C<INT>
 
-Checks for an integer between -2147483648 and -2147483648
+Checks for an integer between -2147483648 and 2147483648
 
 =item C<UINT>
 

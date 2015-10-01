@@ -2131,25 +2131,17 @@ hook has been overwritten).
 Any of the following ways can be used to require authentication on
 every step.
 
-=over 4
-
-=item
-
+    # Example one
     sub require_auth { 1 }
 
-=item
-
+    # Example two
     __PACKAGE__->navigate_authenticated; # instead of __PACKAGE__->navigate;
 
-=item
-
+    # Example three
     __PACKAGE__->new({require_auth => 1}->navigate;
 
-=item
-
+    # Example four
     sub init { shift->require_auth(1) }
-
-=back
 
 Because it is called as a hook, the current step is passed as the
 first argument.  If the hook returns false, no authentication will be
@@ -2166,49 +2158,36 @@ be called).
 For example you could add authentication to the add, edit, and delete
 steps in any of the following ways:
 
-=over 4
-
-=item
-
+    # Example one
     sub require_auth { {add => 1, edit => 1, delete => 1} }
 
-=item
-
+    # Example two
     sub add_require_auth    { 1 }
     sub edit_require_auth   { 1 }
     sub delete_require_auth { 1 }
 
-=item
-
+    # Example three
     sub require_auth {
         my ($self, $step) = @_;
         return 1 if $step && $step =~ /^(add|edit|delete)$/;
         return 0;
     }
 
-=back
-
 If however you wanted to require authentication on all but one or two methods
 (such as requiring authentication on all but a forgot_password step) you could do
 either of the following:
 
-=over 4
-
-=item
-
+    # Example one
     sub require_auth {
         my ($self, $step) = @_;
         return 0 if $step && $step eq 'forgot_password';
         return 1; # require auth on all other steps
     }
 
-=item
-
+    # Example two
     sub require_auth { 1 } # turn it on for all steps
 
     sub forgot_password_require_auth { 0 } # turn it off
-
-=back
 
 See the get_valid_auth method for what occurs should authentication be required.
 
