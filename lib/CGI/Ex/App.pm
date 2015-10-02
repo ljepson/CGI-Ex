@@ -1,7 +1,7 @@
 package CGI::Ex::App;
 
 ###---------------------###
-#  Copyright 2004-2014 - Paul Seamons
+#  Copyright 2004-2015 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
@@ -9,7 +9,7 @@ BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
 }
-our $VERSION = '2.42';
+our $VERSION = '2.43';
 
 sub croak { die sprintf "%s at %3\$s line %4\$s\n", $_[0], caller 1 }
 

@@ -7,17 +7,21 @@ CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006-2014 - Paul Seamons                                #
+#  Copyright 2006-2015 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
-use vars qw(@EXPORT @EXPORT_OK);
+use vars qw($VERSION
+            @EXPORT @EXPORT_OK);
 use strict;
 use base qw(Exporter);
 
 BEGIN {
+    $VERSION = '2.43';
+
     @EXPORT = qw(JSONDump);
     @EXPORT_OK = @EXPORT;
+
 };
 
 sub JSONDump {
@@ -389,6 +393,6 @@ This module may distributed under the same terms as Perl itself.
 
 =head1 AUTHORS
 
-Paul Seamons <paul@seamons.com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

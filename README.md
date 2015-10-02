@@ -377,4 +377,4 @@ See also [CGI::Ex::Validate](lib/CGI/Ex/Validate.pm).
 This module may be distributed under the same terms as Perl itself.
 
 ### AUTHOR
-Paul Seamons \<paul@seamons.com\>
+Paul Seamons \<perl at seamons dot com\>

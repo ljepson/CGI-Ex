@@ -7,7 +7,7 @@ CGI::Ex::Fill - Fast but compliant regex based form filler
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2003-2014 - Paul Seamons                                #
+#  Copyright 2003-2015 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -24,7 +24,7 @@ use vars qw($VERSION
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION   = '2.42';
+    $VERSION   = '2.43';
     @EXPORT    = qw(form_fill);
     @EXPORT_OK = qw(fill form_fill html_escape get_tagval_by_key swap_tagval_by_key);
 };
@@ -838,6 +838,6 @@ This module may distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <paul@seamons.com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

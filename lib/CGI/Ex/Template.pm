@@ -10,7 +10,8 @@ use strict;
 use warnings;
 use Template::Alloy 1.016;
 use base qw(Template::Alloy);
-use vars qw($QR_PRIVATE
+use vars qw($VERSION
+            $QR_PRIVATE
             $WHILE_MAX
             $MAX_EVAL_RECURSE
             $MAX_MACRO_RECURSE
@@ -23,6 +24,8 @@ use vars qw($QR_PRIVATE
             $HASH_OPS
             $VOBJS
             );
+
+$VERSION = '2.43';
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;
@@ -151,6 +154,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <paul@seamons.com>
+Paul Seamons <perl at seamons dot com>
 
 =cut

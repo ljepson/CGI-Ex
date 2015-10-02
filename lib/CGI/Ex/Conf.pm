@@ -7,14 +7,15 @@ CGI::Ex::Conf - Conf Reader/Writer for many different data format types
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2003-2014 - Paul Seamons                                #
+#  Copyright 2003-2015 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
 use strict;
 use base qw(Exporter);
 use Carp qw(croak);
-use vars qw(@DEFAULT_PATHS
+use vars qw($VERSION
+            @DEFAULT_PATHS
             $DEFAULT_EXT
             %EXT_READERS
             %EXT_WRITERS
@@ -27,6 +28,8 @@ use vars qw(@DEFAULT_PATHS
             $NO_WARN_ON_FAIL
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
+
+$VERSION = '2.43';
 
 $DEFAULT_EXT = 'conf';
 
@@ -922,7 +925,7 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <paul@seamons.com>
+Paul Seamons <perl at seamons dot com>
 
 =cut
 
