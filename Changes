@@ -1,9 +1,12 @@
+2.44
+    2015-10-7
+        * Restoring the version number in several modules
+        * Updated the copyright year to 2015
+
 2.43
     2015-10-1
         * Fixing POD errors
         * Restoring the README that got lost in 2.42
-        * Restoring the version number in several modules
-        * Updated the copyright year to 2015
 
 2.42
     2014-12-10
