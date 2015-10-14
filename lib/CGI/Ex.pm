@@ -13,14 +13,15 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 
 ### See perldoc at bottom
 
+use 5.006;
 use strict;
-use vars qw($VERSION
-            $PREFERRED_CGI_MODULE
-            $PREFERRED_CGI_REQUIRED
-            $AUTOLOAD
-            $DEBUG_LOCATION_BOUNCE
-            @EXPORT @EXPORT_OK
-            );
+our ($VERSION,
+     $PREFERRED_CGI_MODULE,
+     $PREFERRED_CGI_REQUIRED,
+     $AUTOLOAD,
+     $DEBUG_LOCATION_BOUNCE,
+     @EXPORT, @EXPORT_OK
+     );
 use base qw(Exporter);
 
 BEGIN {
