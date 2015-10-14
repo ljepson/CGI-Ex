@@ -14,6 +14,7 @@ WriteMakefile(
               INSTALLDIRS   => 'site',
               PREREQ_PM     => {
                   'Template::Alloy' => '1.016',
+                  'CGI' => 0,
               },
 
               dist          => {
