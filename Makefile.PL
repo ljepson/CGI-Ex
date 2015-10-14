@@ -22,6 +22,9 @@ WriteMakefile1(
                 resources => {
                   repository => 'https://github.com/ljepson/CGI-Ex',
                 },
+                'no_index' => {
+                  'directory' => ['t', 'samples'],
+                },
               },
               TEST_REQUIRES => {
                 'Test::More' => 0,
