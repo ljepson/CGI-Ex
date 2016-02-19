@@ -194,9 +194,7 @@ sub fill {
 
             if ($name && ! $ignore->{$name}) {
                 if (! $type
-                    || $type eq 'HIDDEN'
-                    || $type eq 'TEXT'
-                    || $type eq 'FILE'
+                    || ($type ne 'PASSWORD' && $type ne 'CHECKBOX' && $type ne 'RADIO')
                     || ($type eq 'PASSWORD' && $fill_password)) {
 
                     my $value = $get_form_value->($name, 'next');
