@@ -4,6 +4,7 @@ package CGI::Ex::App;
 #  Copyright 2004-2016 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
+use 5.006; #our
 use strict;
 BEGIN {
     eval { use Time::HiRes qw(time) };
