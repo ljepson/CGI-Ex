@@ -7,7 +7,7 @@ CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2006-2015 - Paul Seamons                                #
+#  Copyright 2006-2016 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 

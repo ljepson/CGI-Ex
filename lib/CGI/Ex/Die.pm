@@ -7,7 +7,7 @@ CGI::Ex::Die - A CGI::Carp::FatalsToBrowser type utility.
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2004-2015 - Paul Seamons                                #
+#  Copyright 2004-2016 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 

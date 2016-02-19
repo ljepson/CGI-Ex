@@ -2,7 +2,7 @@ package CGI::Ex::Validate;
 
 ###---------------------###
 #  See the perldoc in CGI/Ex/Validate.pod
-#  Copyright 2003-2015 - Paul Seamons
+#  Copyright 2003-2016 - Paul Seamons
 #  Distributed under the Perl Artistic License without warranty
 
 use strict;
