@@ -325,9 +325,6 @@ not specified, the key from the top level hash will be used.
     real_key_name2 => {
         required => 1,
     },
-    'm/\w+/' => { # this will apply to all fields matching this regex
-        required => 1,
-    },
 
 Each of the individual field validation hashrefs should contain the
 types listed in VALIDATION TYPES.
@@ -580,7 +577,7 @@ compare, custom, or length checks will not be ran.
 
 =over 4
 
-=item C<CC>
+item C<CC>
 
 Simple Luhn-10 check.  Note that spaces and dashes are left in place.
 
@@ -616,7 +613,7 @@ Basic check that string matches something resembling an http or https url.
 
 =item C<INT>
 
-Checks for an integer between -2147483648 and 2147483648
+Checks for an integer between -2147483648 and -2147483648
 
 =item C<UINT>
 
@@ -661,14 +658,7 @@ if the conditions are met.  Works in JS.
         field       => 'm/^(\w+)_pass/',
         validate_if => '$1_user',
         required    => 1,
-    },
-    {
-        field       => 'm/^(\w+)_pass2/',
-        validate_if => '$1_pass',
-        equals      => '$1_pass',
-        required    => 1,
     }
-
     # will validate foo_pass only if foo_user was present.
 
 The validate_if may also contain an arrayref of validation items.  So that
@@ -1229,6 +1219,6 @@ This module may be distributed under the same terms as Perl itself.
 
 =head1 AUTHOR
 
-Paul Seamons <perl at seamons dot com>
+Paul Seamons <paul at seamons dot com>
 
 =cut

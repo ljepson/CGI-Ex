@@ -7,7 +7,7 @@ CGI::Ex::Conf - Conf Reader/Writer for many different data format types
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2003-2015 - Paul Seamons                                #
+#  Copyright 2003-2012 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -29,7 +29,7 @@ use vars qw($VERSION
             );
 @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-$VERSION = '2.44';
+$VERSION = '2.38';
 
 $DEFAULT_EXT = 'conf';
 

@@ -1,28 +1,3 @@
-2.44
-    2015-10-7
-        * Restoring the version number in several modules
-        * Updated the copyright year to 2015
-
-2.43
-    2015-10-1
-        * Fixing POD errors
-        * Restoring the README that got lost in 2.42
-
-2.42
-    2014-12-10
-        * Adding protection to location bounces to stop potential XSS vulnerabilities
-
-2.41
-    2014-06-12
-        * Restoring a tab character in Makefile.PL so that make can run again
-
-2.40
-    2012-12-17
-        * Validation fixes for regex based keys
-        * Allow for HTML5 types
-        * Make sure that default values always stringify
-        * App find_hook now returns a list
-
 2.38
     2012-03-02
         * No functional changes, just fixes for newer versions of perl that have changed the way that "is" works.

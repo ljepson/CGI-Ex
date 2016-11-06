@@ -8,7 +8,7 @@ CGI::Ex::Template - Template::Alloy based TT2/TT3/HT/HTE/Tmpl/Velocity engine.
 
 use strict;
 use warnings;
-use Template::Alloy 1.016;
+use Template::Alloy 1.004;
 use base qw(Template::Alloy);
 use vars qw($VERSION
             $QR_PRIVATE
@@ -25,7 +25,7 @@ use vars qw($VERSION
             $VOBJS
             );
 
-$VERSION = '2.44';
+$VERSION = '2.38';
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;

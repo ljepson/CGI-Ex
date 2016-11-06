@@ -1,22 +1,22 @@
----
-abstract: 'CGI utility suite - makes powerful application writing fun and easy'
+--- #YAML:1.0
+name:               CGI-Ex
+version:            2.38
+abstract:           CGI utility suite - makes powerful application writing fun and easy
 author:
-  - 'Paul Seamons'
-build_requires:
-  ExtUtils::MakeMaker: 0
+    - Paul Seamons
+license:            unknown
+distribution_type:  module
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 7.04, CPAN::Meta::Converter version 2.120921'
-license: unknown
-meta-spec:
-  url: http://module-build.sourceforge.net/META-spec-v1.4.html
-  version: 1.4
-name: CGI-Ex
-no_index:
-  directory:
-    - t
-    - inc
+    ExtUtils::MakeMaker:  0
+build_requires:
+    ExtUtils::MakeMaker:  0
 requires:
-  Template::Alloy: 1.016
-version: 2.44
+    Template::Alloy:  1.004
+no_index:
+    directory:
+        - t
+        - inc
+generated_by:       ExtUtils::MakeMaker version 6.56
+meta-spec:
+    url:      http://module-build.sourceforge.net/META-spec-v1.4.html
+    version:  1.4

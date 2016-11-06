@@ -12,19 +12,19 @@ WriteMakefile(
               VERSION_FROM  => "lib/CGI/Ex.pm",
               INSTALLDIRS   => 'site',
               PREREQ_PM     => {
-                  'Template::Alloy' => '1.016',
+                  'Template::Alloy' => '1.004',
               },
-
+              
               dist          => {
                 DIST_DEFAULT => 'all tardist',
                 COMPRESS     => 'gzip -vf',
                 SUFFIX       => '.gz',
               },
-
+              
               clean          => {
                 FILES        => '*~',
               },
-
+              
               realclean         => {
                 FILES        => '*~',
               },
@@ -34,7 +34,7 @@ package MY;
 
 sub postamble {
   return qq^
-
+    
 pm_to_blib: README
 
 README: \$(VERSION_FROM)
