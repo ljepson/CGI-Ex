@@ -12,6 +12,7 @@ WriteMakefile(
               VERSION_FROM  => "lib/CGI/Ex.pm",
               INSTALLDIRS   => 'site',
               PREREQ_PM     => {
+                  'File::Temp'      => '0',
                   'Template::Alloy' => '1.016',
               },
 
