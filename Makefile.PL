@@ -56,8 +56,6 @@ WriteMakefile1(
               },
               );
 
-
-
 sub WriteMakefile1 {  #Compatibility code for old versions of EU::MM. Written by Alexandr Ciornii, version 0.23. Added by eumm-upgrade.
   my %params=@_;
   my $eumm_version=$ExtUtils::MakeMaker::VERSION;
@@ -85,6 +83,7 @@ sub WriteMakefile1 {  #Compatibility code for old versions of EU::MM. Written by
 
   WriteMakefile(%params);
 }
+
 package MY;
 
 sub postamble {
@@ -94,6 +93,9 @@ pm_to_blib: README
 
 README: \$(VERSION_FROM)
 	pod2text \$(VERSION_FROM) > README
+
+README.md: \$(VERSION_FROM)
+	pod2markdown \$(VERSION_FROM) README.md
 ^;
 }
 
