@@ -7,7 +7,7 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 =cut
 
 ###----------------------------------------------------------------###
-#  Copyright 2003-2016 - Paul Seamons                                #
+#  Copyright 2003-2017 - Paul Seamons                                #
 #  Distributed under the Perl Artistic License without warranty      #
 ###----------------------------------------------------------------###
 
@@ -25,7 +25,7 @@ our ($VERSION,
 use base qw(Exporter);
 
 BEGIN {
-    $VERSION               = '2.44';
+    $VERSION               = '2.45';
     $PREFERRED_CGI_MODULE  ||= 'CGI';
     @EXPORT = ();
     @EXPORT_OK = qw(get_form
