@@ -13,11 +13,11 @@ WriteMakefile1(
               VERSION_FROM  => "lib/CGI/Ex.pm",
               INSTALLDIRS   => 'site',
               PREREQ_PM     => {
-                  'File::Temp'      => '0',
-                  'Template::Alloy' => '1.016',
-                  'CGI' => 0,
+                'CGI'             => '0',
+                'File::Temp'      => '0',
+                'Template::Alloy' => '1.016',
               },
-              LICENSE => 'perl',
+              LICENSE => 'perl_5',
               MIN_PERL_VERSION => '5.006',
               META_MERGE => {
                 resources => {
@@ -28,7 +28,7 @@ WriteMakefile1(
                 },
               },
               TEST_REQUIRES => {
-                'Test::More' => 0,
+                'Test::More' => '0',
               },
 
               dist          => {
