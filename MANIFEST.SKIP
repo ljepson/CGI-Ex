@@ -34,3 +34,4 @@ coverage/
 \.zip$
 \B\.perl-version$
 \bCGI-Ex-[0-9.]+/
+^\.travis\.yml$
