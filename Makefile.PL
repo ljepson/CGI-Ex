@@ -20,8 +20,18 @@ WriteMakefile1(
               LICENSE => 'perl_5',
               MIN_PERL_VERSION => '5.006',
               META_MERGE => {
-                resources => {
-                  repository => 'https://github.com/ljepson/CGI-Ex',
+                'meta-spec' => { version => 2 },
+                'resources' => {
+                  'homepage'   => 'https://metacpan.org/module/CGI::Ex',
+                  'license'    => 'https://dev.perl.org/licenses/',
+                  'bugtracker' => {
+                    'web' => 'https://github.com/ljepson/CGI-Ex/issues',
+                  },
+                  'repository' => {
+                    'type' => 'git',
+                    'url'  => 'git://github.com/ljepson/CGI-Ex.git',
+                    'web'  => 'https://github.com/ljepson/CGI-Ex',
+                  },
                 },
                 'no_index' => {
                   'directory' => ['t', 'samples'],
