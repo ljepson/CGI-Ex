@@ -314,6 +314,7 @@ sub validate_buddy {
                 $copy;
             };
             foreach my $value (@$values) {
+                next if ! defined $value;
                 if ($global) { $value =~ s{(?$opt:$pat)}{ $expand->($value, [@-], [@+]) }eg }
                 else         { $value =~ s{(?$opt:$pat)}{ $expand->($value, [@-], [@+]) }e  }
             }
