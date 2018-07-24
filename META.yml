@@ -31,5 +31,5 @@ resources:
   homepage: https://metacpan.org/module/CGI::Ex
   license: https://dev.perl.org/licenses/
   repository: git://github.com/ljepson/CGI-Ex.git
-version: '2.45'
+version: '2.46'
 x_serialization_backend: 'CPAN::Meta::YAML version 0.018'
