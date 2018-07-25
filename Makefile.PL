@@ -2,7 +2,7 @@ use 5.006;
 use ExtUtils::MakeMaker;
 
 ###----------------------------------------------------------------###
-#  Copyright 2003 - Paul Seamons                                     #
+#  Copyright - Paul Seamons                                          #
 #  Distributed under the GNU General Public License without warranty #
 ###----------------------------------------------------------------###
 
