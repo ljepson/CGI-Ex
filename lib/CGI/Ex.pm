@@ -357,7 +357,7 @@ sub set_cookie {
     my $cookie = "" . $obj->cookie(%$args);
 
     if ($self->content_typed) {
-        print "<script>document.cookie = '$cookie'</script>";
+        print "<script>document.cookie = '$cookie'</script>\n";
     } else {
         if (my $r = $self->apache_request) {
             if ($self->is_mod_perl_1) {
