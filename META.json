@@ -43,7 +43,6 @@
       "test" : {
          "requires" : {
             "Test::More" : "0",
-            "Test::Warn" : "0"
          }
       }
    },
