@@ -278,14 +278,18 @@ sub set_cookie {
     return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
     my $key  = $args->{'name'};
     my $val  = $args->{'value'};
-    my $dom  = $args->{'domain'} || $self->cookie_domain;
-    my $sec  = $args->{'secure'} || $self->cookie_secure;
+    my $dom  = $args->{'domain'}   || $self->cookie_domain;
+    my $sec  = $args->{'secure'}   || $self->cookie_secure;
+    my $http = $args->{'httponly'} || $self->cookie_httponly;
+    my $same = $args->{'samesite'} || $self->cookie_samesite;
     $self->cgix->set_cookie({
         -name    => $key,
         -value   => $val,
         -path    => $args->{'path'} || $self->cookie_path($key, $val) || '/',
-        ($dom ? (-domain => $dom) : ()),
-        ($sec ? (-secure => $sec) : ()),
+        ($dom  ? (-domain   => $dom)  : ()),
+        ($sec  ? (-secure   => $sec)  : ()),
+        ($http ? (-httponly => $http) : ()),
+        ($same ? (-samesite => $same) : ()),
         ($args->{'expires'} ? (-expires => $args->{'expires'}): ()),
     });
     $self->cookies->{$key} = $val;
@@ -324,6 +328,8 @@ sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 sub cookie_path      { shift->{'cookie_path'}      }
 sub cookie_domain    { shift->{'cookie_domain'}    }
 sub cookie_secure    { shift->{'cookie_secure'}    }
+sub cookie_httponly  { shift->{'cookie_httponly'}  }
+sub cookie_samesite  { shift->{'cookie_samesite'}  }
 sub use_session_cookie { shift->{'use_session_cookie'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
 sub complex_plaintext { shift->{'complex_plaintext'} }
