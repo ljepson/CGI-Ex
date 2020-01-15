@@ -991,8 +991,10 @@ described separately.
     cgix
     cleanup_user
     cookie_domain
-    cookie_secure
+    cookie_httponly
     cookie_path
+    cookie_samesite
+    cookie_secure
     cookies
     expires_min
     form
@@ -1399,6 +1401,20 @@ with a custom payload.
 
 Another option would be to only accept payloads from tokens if use_blowfish
 is set and armor was equal to "blowfish."
+
+=item C<cookie_domain> et al.
+
+The C<cookie_*> properties allow customizing the default implementation of
+C<set_cookie> for setting L</key_cookie>. The available properties are:
+
+    cookie_domain
+    cookie_httponly
+    cookie_path
+    cookie_samesite
+    cookie_secure
+
+Note: Using a value of C<"none"> for C<cookie_samesite> requires L<CGI>
+version 4.45 or greater.
 
 =back
 
