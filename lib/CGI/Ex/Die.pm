@@ -16,7 +16,7 @@ use vars qw($EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL);
 use CGI::Ex;
 use CGI::Ex::Dump qw(debug ctrace dex_html);
 
-our $VERSION = '2.48';
+our $VERSION = '999.99'; # VERSION
 our $no_recurse;
 our $ERROR_TEMPLATE;
 our $LOG_HANDLER;
