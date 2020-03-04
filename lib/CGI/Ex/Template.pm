@@ -11,7 +11,7 @@ use warnings;
 use Template::Alloy 1.016;
 use base qw(Template::Alloy);
 
-our $VERSION = '2.48';
+our $VERSION = '999.99'; # VERSION
 
 ### install true symbol table aliases that can be localized
 *QR_PRIVATE        = *Template::Alloy::QR_PRIVATE;
