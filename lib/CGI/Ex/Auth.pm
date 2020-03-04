@@ -278,14 +278,18 @@ sub set_cookie {
     return $self->{'set_cookie'}->($self, $args) if $self->{'set_cookie'};
     my $key  = $args->{'name'};
     my $val  = $args->{'value'};
-    my $dom  = $args->{'domain'} || $self->cookie_domain;
-    my $sec  = $args->{'secure'} || $self->cookie_secure;
+    my $dom  = $args->{'domain'}   || $self->cookie_domain;
+    my $sec  = $args->{'secure'}   || $self->cookie_secure;
+    my $http = $args->{'httponly'} || $self->cookie_httponly;
+    my $same = $args->{'samesite'} || $self->cookie_samesite;
     $self->cgix->set_cookie({
         -name    => $key,
         -value   => $val,
         -path    => $args->{'path'} || $self->cookie_path($key, $val) || '/',
-        ($dom ? (-domain => $dom) : ()),
-        ($sec ? (-secure => $sec) : ()),
+        ($dom  ? (-domain   => $dom)  : ()),
+        ($sec  ? (-secure   => $sec)  : ()),
+        ($http ? (-httponly => $http) : ()),
+        ($same ? (-samesite => $same) : ()),
         ($args->{'expires'} ? (-expires => $args->{'expires'}): ()),
     });
     $self->cookies->{$key} = $val;
@@ -324,6 +328,8 @@ sub failed_sleep     { shift->{'failed_sleep'}     ||= 0              }
 sub cookie_path      { shift->{'cookie_path'}      }
 sub cookie_domain    { shift->{'cookie_domain'}    }
 sub cookie_secure    { shift->{'cookie_secure'}    }
+sub cookie_httponly  { shift->{'cookie_httponly'}  }
+sub cookie_samesite  { shift->{'cookie_samesite'}  }
 sub use_session_cookie { shift->{'use_session_cookie'} }
 sub disable_simple_cram { shift->{'disable_simple_cram'} }
 sub complex_plaintext { shift->{'complex_plaintext'} }
@@ -985,8 +991,10 @@ described separately.
     cgix
     cleanup_user
     cookie_domain
-    cookie_secure
+    cookie_httponly
     cookie_path
+    cookie_samesite
+    cookie_secure
     cookies
     expires_min
     form
@@ -1393,6 +1401,20 @@ with a custom payload.
 
 Another option would be to only accept payloads from tokens if use_blowfish
 is set and armor was equal to "blowfish."
+
+=item C<cookie_domain> et al.
+
+The C<cookie_*> properties allow customizing the default implementation of
+C<set_cookie> for setting L</key_cookie>. The available properties are:
+
+    cookie_domain
+    cookie_httponly
+    cookie_path
+    cookie_samesite
+    cookie_secure
+
+Note: Using a value of C<"none"> for C<cookie_samesite> requires L<CGI>
+version 4.45 or greater.
 
 =back
 
