@@ -14,7 +14,7 @@ CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 use strict;
 use Exporter qw(import);
 
-our $VERSION = '2.48';
+our $VERSION = '999.99'; # VERSION
 our @EXPORT = qw(JSONDump);
 our @EXPORT_OK = @EXPORT;
 

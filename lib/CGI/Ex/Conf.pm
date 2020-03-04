@@ -18,7 +18,7 @@ use Carp qw(croak);
 
 our @EXPORT_OK = qw(conf_read conf_write in_cache);
 
-our $VERSION = '2.48';
+our $VERSION = '999.99'; # VERSION
 
 our $DEFAULT_EXT = 'conf';
 our @DEFAULT_PATHS;
