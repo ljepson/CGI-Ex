@@ -4,7 +4,7 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 
 # VERSION
 
-version 2.48
+version 2.49
 
 [![master](https://travis-ci.org/ljepson/CGI-Ex.svg?branch=master)](https://travis-ci.org/ljepson/CGI-Ex)
 
@@ -57,7 +57,7 @@ the CGI::Ex::App module.  CGI::Ex::App takes CGI application building
 to the next step.  CGI::Ex::App is not quite a framework (which normally
 includes pre-built html) instead CGI::Ex::App is an extended application
 flow that dramatically reduces CGI build time in most cases.  It does so
-using as little magic as possible.  See [CGI::Ex::App](https://metacpan.org/pod/CGI::Ex::App).
+using as little magic as possible.  See [CGI::Ex::App](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AApp).
 
 The main functionality is provided by several other modules that
 may be used separately, or together through the CGI::Ex interface.
@@ -71,7 +71,7 @@ may be used separately, or together through the CGI::Ex interface.
 
     A regular expression based form filler inner (accessed through **->fill**
     or directly via its own functions).  Can be a drop in replacement for
-    HTML::FillInForm.  See [CGI::Ex::Fill](https://metacpan.org/pod/CGI::Ex::Fill) for more information.
+    HTML::FillInForm.  See [CGI::Ex::Fill](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AFill) for more information.
 
 - `CGI::Ex::Validate`
 
@@ -80,18 +80,18 @@ may be used separately, or together through the CGI::Ex interface.
     for most validators, although it has most of the functionality of most
     of the validators but with the key additions of conditional validation.
     Has a tightly integrated JavaScript portion that allows for duplicate client
-    side validation.  See [CGI::Ex::Validate](https://metacpan.org/pod/CGI::Ex::Validate) for more information.
+    side validation.  See [CGI::Ex::Validate](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AValidate) for more information.
 
 - `CGI::Ex::Conf`
 
     A general use configuration, or settings, or key / value file reader.  Has
     ability for providing key fallback as well as immutable key definitions.  Has
     default support for yaml, storable, perl, ini, and xml and open architecture
-    for definition of others.  See [CGI::Ex::Conf](https://metacpan.org/pod/CGI::Ex::Conf) for more information.
+    for definition of others.  See [CGI::Ex::Conf](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AConf) for more information.
 
 - `CGI::Ex::Auth`
 
-    A highly configurable web based authentication system.  See [CGI::Ex::Auth](https://metacpan.org/pod/CGI::Ex::Auth) for
+    A highly configurable web based authentication system.  See [CGI::Ex::Auth](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AAuth) for
     more information.
 
 # CGI::Ex METHODS
@@ -103,7 +103,7 @@ may be used separately, or together through the CGI::Ex interface.
     Arguments may be given as a hash, or a hashref or positional.  Some
     of the following arguments will only work using CGI::Ex::Fill - most
     will work with either CGI::Ex::Fill or HTML::FillInForm (assume they
-    are available unless specified otherwise).  (See [CGI::Ex::Fill](https://metacpan.org/pod/CGI::Ex::Fill) for
+    are available unless specified otherwise).  (See [CGI::Ex::Fill](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AFill) for
     a full explanation of functionality).  The arguments to fill are as
     follows (and in order of position):
 
@@ -175,7 +175,7 @@ may be used separately, or together through the CGI::Ex interface.
         the key value pairs.  Should be capable of the ->param method and
         \->cookie method as document in [CGI](https://metacpan.org/pod/CGI).
 
-    See [CGI::Ex::Fill](https://metacpan.org/pod/CGI::Ex::Fill) for more information about the filling process.
+    See [CGI::Ex::Fill](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AFill) for more information about the filling process.
 
 - `->object`
 
@@ -185,7 +185,7 @@ may be used separately, or together through the CGI::Ex interface.
 
 - `->validate`
 
-    Validate has a wide range of options available. (See [CGI::Ex::Validate](https://metacpan.org/pod/CGI::Ex::Validate)
+    Validate has a wide range of options available. (See [CGI::Ex::Validate](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AValidate)
     for a full explanation of functionality).  Validate has two arguments:
 
     - `form`
@@ -362,21 +362,21 @@ may be used separately, or together through the CGI::Ex interface.
 
 # MODULES
 
-See also [CGI::Ex::App](https://metacpan.org/pod/CGI::Ex::App).
+See also [CGI::Ex::App](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AApp).
 
-See also [CGI::Ex::Auth](https://metacpan.org/pod/CGI::Ex::Auth).
+See also [CGI::Ex::Auth](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AAuth).
 
-See also [CGI::Ex::Conf](https://metacpan.org/pod/CGI::Ex::Conf).
+See also [CGI::Ex::Conf](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AConf).
 
-See also [CGI::Ex::Die](https://metacpan.org/pod/CGI::Ex::Die).
+See also [CGI::Ex::Die](https://metacpan.org/pod/CGI%3A%3AEx%3A%3ADie).
 
-See also [CGI::Ex::Dump](https://metacpan.org/pod/CGI::Ex::Dump).
+See also [CGI::Ex::Dump](https://metacpan.org/pod/CGI%3A%3AEx%3A%3ADump).
 
-See also [CGI::Ex::Fill](https://metacpan.org/pod/CGI::Ex::Fill).
+See also [CGI::Ex::Fill](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AFill).
 
-See also [CGI::Ex::Template](https://metacpan.org/pod/CGI::Ex::Template).
+See also [CGI::Ex::Template](https://metacpan.org/pod/CGI%3A%3AEx%3A%3ATemplate).
 
-See also [CGI::Ex::Validate](https://metacpan.org/pod/CGI::Ex::Validate).
+See also [CGI::Ex::Validate](https://metacpan.org/pod/CGI%3A%3AEx%3A%3AValidate).
 
 # LICENSE
 

@@ -2,7 +2,7 @@ Revision history for CGI-Ex.
 
 {{$NEXT}}
 
-2.49      2020-03-05
+2.49      2020-03-05 10:42:23-07:00 America/Denver
   * Switch to Dist::Zilla for building dist (this release is thanks to Charles McGarvey)
   * Fix CI config to work with dzil
   * Add HttpOnly, SameSite support to CGI::Ex::Auth
