@@ -12,6 +12,7 @@ CGI::Ex::Die - A CGI::Carp::FatalsToBrowser type utility.
 ###----------------------------------------------------------------###
 
 use strict;
+use warnings;
 use vars qw($EXTENDED_ERRORS $SHOW_TRACE $IGNORE_EVAL);
 use CGI::Ex;
 use CGI::Ex::Dump qw(debug ctrace dex_html);

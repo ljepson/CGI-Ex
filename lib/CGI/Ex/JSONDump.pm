@@ -12,6 +12,7 @@ CGI::Ex::JSONDump - Comprehensive data to JSON dump.
 ###----------------------------------------------------------------###
 
 use strict;
+use warnings;
 use Exporter qw(import);
 
 our $VERSION = '999.99'; # VERSION

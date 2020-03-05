@@ -13,6 +13,7 @@ CGI::Ex::Dump - A debug utility
 
 use vars qw($CALL_LEVEL $ON $SUB $QR1 $QR2 $full_filename $DEPARSE);
 use strict;
+use warnings;
 use Exporter qw(import);
 
 our $VERSION = '999.99'; # VERSION

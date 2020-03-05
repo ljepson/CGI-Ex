@@ -19,6 +19,7 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 
 use 5.006;
 use strict;
+use warnings;
 our $VERSION = '999.99'; # VERSION
 
 our ($PREFERRED_CGI_MODULE,

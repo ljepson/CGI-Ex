@@ -12,7 +12,7 @@ CGI::Ex::Auth - Handle logins nicely.
 ###----------------------------------------------------------------###
 
 use strict;
-#use warnings; # TODO - investigate enabling in heavy usage scenarios
+use warnings; # TODO - investigate enabling in heavy usage scenarios
 
 use MIME::Base64 qw(encode_base64 decode_base64);
 use Digest::MD5 qw(md5_hex);

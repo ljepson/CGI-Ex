@@ -6,6 +6,7 @@ package CGI::Ex::App;
 
 use 5.006; #our
 use strict;
+use warnings;
 BEGIN {
     eval { use Time::HiRes qw(time) };
     eval { use Scalar::Util };
