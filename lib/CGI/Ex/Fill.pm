@@ -242,6 +242,7 @@ sub fill {
         next if ! $opts;
         my $tag    = $1;
         my $name   = get_tagval_by_key(\$tag, 'name');
+        next if ! defined($name) || ! length($name);
         my $values = $ignore->{$name} ? [] : $get_form_value->($name, 'all');
         if ($#$values != -1) {
             my $n = $opts =~ s{
