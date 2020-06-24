@@ -134,8 +134,9 @@ sub get_form {
     my %hash = ();
     ### this particular use of $cgi->param in list context is safe
     local $CGI::LIST_CONTEXT_WARN = 0;
+    my $mp = $obj->can('multi_param') ? 1 : 0;
     foreach my $key ($obj->param) {
-        my @val = $obj->param($key);
+        my @val = $mp ? $obj->multi_param($key) : $obj->param($key);
         $hash{$key} = ($#val <= 0) ? $val[0] : \@val;
     }
     return $self->{'form'} = \%hash;
