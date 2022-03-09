@@ -328,6 +328,7 @@ sub location_bounce {
         } else {
             $r->headers_out->add("Location", $loc);
             $r->content_type('text/html');
+            $r->print("Bounced to $html_loc\n");
             $r->rflush;
         }
 
