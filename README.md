@@ -4,7 +4,7 @@ CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
 
 # VERSION
 
-version 2.53
+version 2.54
 
 [![master](https://travis-ci.org/ljepson/CGI-Ex.svg?branch=master)](https://travis-ci.org/ljepson/CGI-Ex)
 
