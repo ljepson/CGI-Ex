@@ -327,6 +327,7 @@ sub location_bounce {
             $r->print("Bounced to $html_loc\n");
         } else {
             $r->headers_out->add("Location", $loc);
+            $r->rflush;
             $r->custom_response(302, "Bounced to $html_loc\n");
         }
 
