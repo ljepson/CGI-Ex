@@ -1,12 +1,14 @@
 package CGI::Ex;
 
+=pod
+
+=for markdown [![unit-tests](https://github.com/ljepson/CGI-Ex/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/ljepson/CGI-Ex/actions/workflows/unit-tests.yml)
+
+=for HTML <a title="unit-tests" href="https://github.com/ljepson/CGI-Ex/actions/workflows/unit-tests.yml"><img src="https://github.com/ljepson/CGI-Ex/actions/workflows/unit-tests.yml/badge.svg"></a>
+
 =head1 NAME
 
 CGI::Ex - CGI utility suite - makes powerful application writing fun and easy
-
-=for markdown [![master](https://travis-ci.org/ljepson/CGI-Ex.svg?branch=master)](https://travis-ci.org/ljepson/CGI-Ex)
-
-=for HTML <a href="https://travis-ci.org/ljepson/CGI-Ex"><img src="https://travis-ci.org/ljepson/CGI-Ex.svg?branch=master"></a>
 
 =cut
 
